@@ -1,0 +1,1174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mohamed's Portfolio Dashboard</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f0f2f5; --card: #fff; --border: #e5e7eb;
+    --text: #111827; --muted: #6b7280; --accent: #2563eb;
+    --pos: #16a34a; --neg: #dc2626; --radius: 12px;
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+         background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* ── UPLOAD ── */
+  #upload-screen { min-height:100vh; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; padding:24px; }
+  .up-logo { font-size:48px; margin-bottom:12px; }
+  .up-title { font-size:28px; font-weight:700; margin-bottom:6px; }
+  .up-sub { color:var(--muted); font-size:15px; margin-bottom:36px; }
+  .drop-zone { width:100%; max-width:460px; border:2px dashed #d1d5db;
+    border-radius:var(--radius); padding:44px 32px; text-align:center;
+    cursor:pointer; transition:all .2s; background:var(--card); }
+  .drop-zone:hover,.drop-zone.drag-over { border-color:var(--accent); background:#eff6ff; }
+  .drop-zone-icon { font-size:34px; margin-bottom:10px; }
+  .drop-zone h3 { font-size:15px; font-weight:600; margin-bottom:6px; }
+  .drop-zone p { color:var(--muted); font-size:12px; line-height:1.6; }
+  .browse-btn { display:inline-block; margin-top:18px; padding:9px 22px;
+    background:var(--accent); color:#fff; border-radius:8px; font-size:13px;
+    font-weight:600; cursor:pointer; border:none; transition:background .2s; }
+  .browse-btn:hover { background:#1d4ed8; }
+  .up-note { margin-top:16px; font-size:11px; color:var(--muted); max-width:380px; text-align:center; }
+
+  /* ── DASHBOARD ── */
+  #dashboard { display:none; min-height:100vh; flex-direction:column; }
+  header { height:58px; background:var(--card); border-bottom:1px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 24px; position:sticky; top:0; z-index:100;
+    box-shadow:0 1px 4px rgba(0,0,0,.06); }
+  .h-left { display:flex; align-items:center; gap:10px; }
+  .h-left span { font-size:20px; }
+  .h-left h1 { font-size:16px; font-weight:700; }
+  .h-right { display:flex; align-items:center; gap:10px; }
+  #last-updated { font-size:11px; color:var(--muted); }
+  .upd-btn { padding:7px 14px; background:var(--accent); color:#fff; border:none;
+    border-radius:7px; font-size:12px; font-weight:600; cursor:pointer; }
+  .upd-btn:hover { background:#1d4ed8; }
+
+  /* ── SUMMARY STRIP ── */
+  .summary-strip { display:grid; grid-template-columns:repeat(5,1fr); gap:14px;
+    padding:18px 24px; }
+  .kpi { background:var(--card); border-radius:var(--radius); padding:16px 18px;
+    border:1px solid var(--border); }
+  .kpi-lbl { font-size:10px; font-weight:700; color:var(--muted); text-transform:uppercase;
+    letter-spacing:.5px; margin-bottom:5px; }
+  .kpi-val { font-size:20px; font-weight:700; }
+  .kpi-sub { font-size:11px; color:var(--muted); margin-top:3px; }
+  .kpi-pos { color:var(--pos); }
+  .kpi-neg { color:var(--neg); }
+
+  /* ── TABS ── */
+  .tab-bar { display:flex; padding:0 24px; border-bottom:1px solid var(--border);
+    background:var(--card); gap:0; }
+  .tab-btn { padding:11px 18px; font-size:13px; font-weight:600; color:var(--muted);
+    border:none; background:none; cursor:pointer; border-bottom:2px solid transparent;
+    margin-bottom:-1px; transition:all .15s; }
+  .tab-btn:hover { color:var(--text); }
+  .tab-btn.active { color:var(--accent); border-bottom-color:var(--accent); }
+  .tab-panel { display:none; padding:22px 24px; }
+  .tab-panel.active { display:block; }
+
+  /* ── SECTION CARDS ── */
+  .card { background:var(--card); border-radius:var(--radius); border:1px solid var(--border); padding:20px; }
+  .card h3 { font-size:13px; font-weight:700; margin-bottom:14px; }
+  .card-grid-2 { display:grid; grid-template-columns:360px 1fr; gap:18px; }
+  .chart-wrap { position:relative; height:270px; }
+
+  /* ── TABLES ── */
+  .tbl-wrap { background:var(--card); border-radius:var(--radius); border:1px solid var(--border); overflow:auto; }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  th { padding:9px 12px; font-size:10px; font-weight:700; color:var(--muted);
+    text-transform:uppercase; letter-spacing:.5px; background:#f9fafb;
+    border-bottom:1px solid var(--border); white-space:nowrap; cursor:pointer; user-select:none; }
+  th:hover { background:#f3f4f6; }
+  th.s-asc::after { content:' ↑'; } th.s-desc::after { content:' ↓'; }
+  td { padding:9px 12px; border-bottom:1px solid #f3f4f6; vertical-align:middle; }
+  tr:last-child td { border-bottom:none; }
+  tr:hover td { background:#fafafa; }
+  .nr { text-align:right; font-variant-numeric:tabular-nums; }
+  .pos { color:var(--pos); font-weight:600; }
+  .neg { color:var(--neg); font-weight:600; }
+  .badge { display:inline-block; padding:2px 7px; border-radius:20px; font-size:10px; font-weight:700; }
+  .b-etf { background:#dbeafe; color:#1d4ed8; }
+  .b-stk { background:#dcfce7; color:#15803d; }
+  .b-buy { background:#dcfce7; color:#15803d; }
+  .b-sell { background:#fee2e2; color:#991b1b; }
+  .b-fee { background:#f3f4f6; color:#6b7280; }
+  .w-bar { width:56px; height:4px; background:#f3f4f6; border-radius:2px; display:inline-block; overflow:hidden; vertical-align:middle; margin-left:5px; }
+  .w-fill { height:100%; background:var(--accent); border-radius:2px; }
+  .dot { width:9px; height:9px; border-radius:50%; display:inline-block; margin-right:6px; flex-shrink:0; }
+
+  /* ── TOOLBAR ── */
+  .toolbar { display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
+  .srch { padding:7px 11px; border:1px solid var(--border); border-radius:7px;
+    font-size:12px; background:var(--card); color:var(--text); outline:none; }
+  .srch:focus { border-color:var(--accent); }
+  select.srch { cursor:pointer; }
+
+  /* ── PERFORMANCE CONTROLS ── */
+  .perf-controls { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:18px; }
+  .period-group { display:flex; gap:2px; background:#f3f4f6; padding:3px; border-radius:8px; }
+  .period-btn { padding:5px 12px; font-size:12px; font-weight:600; color:var(--muted);
+    border:none; background:none; cursor:pointer; border-radius:6px; transition:all .15s; }
+  .period-btn.active { background:var(--card); color:var(--accent);
+    box-shadow:0 1px 3px rgba(0,0,0,.1); }
+  .mode-group { display:flex; gap:2px; background:#f3f4f6; padding:3px; border-radius:8px; }
+  .mode-btn { padding:5px 12px; font-size:12px; font-weight:600; color:var(--muted);
+    border:none; background:none; cursor:pointer; border-radius:6px; transition:all .15s; }
+  .mode-btn.active { background:var(--card); color:var(--accent); box-shadow:0 1px 3px rgba(0,0,0,.1); }
+
+  /* ── ANALYTICS GRID ── */
+  .analytics-kpi { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:18px; }
+  .analytics-charts { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-bottom:18px; }
+  .analytics-charts-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:18px; }
+  .perf-chart-container { position:relative; height:300px; }
+  .analytics-chart-container { position:relative; height:240px; }
+
+  /* ── ALLOC TABLE ── */
+  .alloc-bar-cell { display:flex; align-items:center; gap:8px; }
+  .alloc-bar-wrap { height:5px; background:#f3f4f6; border-radius:3px; flex:1; min-width:50px; overflow:hidden; }
+  .alloc-bar-fill { height:100%; border-radius:3px; }
+
+  /* ── MISC ── */
+  .tag { display:inline-flex; align-items:center; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:600; }
+
+  /* ── OVERLAYS ── */
+  #drop-overlay { display:none; position:fixed; inset:0; background:rgba(37,99,235,.88);
+    z-index:1000; align-items:center; justify-content:center; flex-direction:column;
+    color:#fff; font-size:20px; font-weight:700; gap:10px; }
+  #drop-overlay.active { display:flex; }
+  #drop-overlay .di { font-size:52px; }
+  .loading-overlay { display:none; position:fixed; inset:0; background:rgba(255,255,255,.92);
+    z-index:200; align-items:center; justify-content:center; flex-direction:column; gap:14px; }
+  .loading-overlay.active { display:flex; }
+  .spinner { width:38px; height:38px; border:3px solid #e5e7eb;
+    border-top-color:var(--accent); border-radius:50%; animation:spin .7s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .loading-text { font-size:13px; color:var(--muted); font-weight:600; }
+
+  @media (max-width:1000px) {
+    .card-grid-2 { grid-template-columns:1fr; }
+    .summary-strip { grid-template-columns:repeat(3,1fr); }
+    .analytics-kpi { grid-template-columns:repeat(2,1fr); }
+    .analytics-charts,.analytics-charts-3 { grid-template-columns:1fr; }
+  }
+  @media (max-width:600px) {
+    .summary-strip { grid-template-columns:repeat(2,1fr); }
+    .tab-btn { padding:10px 10px; font-size:12px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- UPLOAD -->
+<div id="upload-screen">
+  <div class="up-logo">📈</div>
+  <h2 class="up-title">Portfolio Dashboard</h2>
+  <p class="up-sub">Drop your Saxo Bank export to get started</p>
+  <div class="drop-zone" id="upload-drop-zone">
+    <div class="drop-zone-icon">📂</div>
+    <h3>Drop your Saxo AggregatedAmounts Excel file here</h3>
+    <p>Requires the export with sheets: <strong>Cash Movements · PL · Performance</strong></p>
+    <button class="browse-btn" id="browse-btn">Browse file</button>
+  </div>
+  <p class="up-note">All data stays in your browser — nothing is uploaded anywhere. Saved locally for next time.</p>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard">
+  <header>
+    <div class="h-left"><span>📈</span><h1>Portfolio Dashboard</h1></div>
+    <div class="h-right">
+      <span id="last-updated"></span>
+      <button class="upd-btn" id="update-btn">⬆ Update File</button>
+    </div>
+  </header>
+
+  <div class="summary-strip">
+    <div class="kpi"><div class="kpi-lbl">Total Value</div><div class="kpi-val" id="k-total">—</div><div class="kpi-sub" id="k-total-sub">—</div></div>
+    <div class="kpi"><div class="kpi-lbl">Total P&L</div><div class="kpi-val" id="k-pl">—</div><div class="kpi-sub" id="k-pl-sub">—</div></div>
+    <div class="kpi"><div class="kpi-lbl">Total Deposited</div><div class="kpi-val" id="k-dep">—</div><div class="kpi-sub" id="k-dep-sub">—</div></div>
+    <div class="kpi"><div class="kpi-lbl">Dividends (net)</div><div class="kpi-val" id="k-div">—</div><div class="kpi-sub" id="k-div-sub">—</div></div>
+    <div class="kpi"><div class="kpi-lbl">Best Performer</div><div class="kpi-val" id="k-best">—</div><div class="kpi-sub" id="k-best-sub">—</div></div>
+  </div>
+
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="overview">Overview</button>
+    <button class="tab-btn" data-tab="positions">Positions</button>
+    <button class="tab-btn" data-tab="performance">Performance</button>
+    <button class="tab-btn" data-tab="analytics">Analytics</button>
+    <button class="tab-btn" data-tab="trades">Trades</button>
+  </div>
+
+  <!-- OVERVIEW -->
+  <div class="tab-panel active" id="tab-overview">
+    <div class="card-grid-2">
+      <div class="card"><h3>Allocation by Sub-Category</h3><div class="chart-wrap"><canvas id="donut-chart"></canvas></div></div>
+      <div class="card">
+        <h3>Portfolio Breakdown</h3>
+        <table><thead><tr><th>Sub-Category</th><th class="nr">Value (USD)</th><th class="nr">Weight</th><th style="min-width:90px">Distribution</th></tr></thead><tbody id="alloc-tbody"></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- POSITIONS -->
+  <div class="tab-panel" id="tab-positions">
+    <div class="toolbar">
+      <input type="text" class="srch" id="pos-srch" placeholder="Search ticker or name…" style="width:190px">
+      <select class="srch" id="cat-f"><option value="all">All Categories</option><option value="ETF">ETF</option><option value="Stock">Stock</option></select>
+      <select class="srch" id="subcat-f"><option value="all">All Sub-Categories</option></select>
+      <select class="srch" id="status-f"><option value="open">Open Positions</option><option value="all">All (incl. closed)</option></select>
+    </div>
+    <div class="tbl-wrap">
+      <table id="pos-table">
+        <thead><tr>
+          <th data-col="ticker">Ticker</th>
+          <th data-col="description">Name</th>
+          <th data-col="category">Type</th>
+          <th data-col="subCategory">Sub-Cat</th>
+          <th data-col="grossCost" class="nr" title="Total amount paid across all buy transactions">Gross Cost ①</th>
+          <th data-col="netCostBasis" class="nr" title="Net cash still deployed (gross cost minus sell proceeds)">Net Cost ②</th>
+          <th data-col="currentValue" class="nr">Curr. Value</th>
+          <th data-col="totalPL" class="nr">P&L ($)</th>
+          <th data-col="plPct" class="nr">P&L (%)</th>
+          <th data-col="dividends" class="nr">Divs (net)</th>
+          <th data-col="weight" class="nr">Weight</th>
+        </tr></thead>
+        <tbody id="pos-tbody"></tbody>
+      </table>
+    </div>
+    <p style="font-size:11px;color:var(--muted);margin-top:10px">① Gross Cost = total paid for all buy transactions ever. &nbsp;② Net Cost = gross cost minus proceeds from any sells (money still "at risk").</p>
+  </div>
+
+  <!-- PERFORMANCE -->
+  <div class="tab-panel" id="tab-performance">
+    <div class="perf-controls">
+      <div class="period-group">
+        <button class="period-btn" data-p="1M">1M</button>
+        <button class="period-btn" data-p="3M">3M</button>
+        <button class="period-btn" data-p="6M">6M</button>
+        <button class="period-btn" data-p="YTD">YTD</button>
+        <button class="period-btn active" data-p="ALL">All</button>
+      </div>
+      <div class="mode-group">
+        <button class="mode-btn active" data-m="value">Portfolio Value</button>
+        <button class="mode-btn" data-m="pl">Cumulative P&L</button>
+      </div>
+      <select class="srch" id="perf-ticker"><option value="all">All Positions</option></select>
+      <select class="srch" id="perf-subcat"><option value="all">All Sub-Categories</option></select>
+    </div>
+    <div class="card">
+      <div style="display:flex;align-items:baseline;gap:16px;margin-bottom:16px;">
+        <h3 style="margin:0" id="perf-chart-title">Portfolio Value Over Time</h3>
+        <span style="font-size:12px;color:var(--muted)" id="perf-chart-sub">Saxo Bank performance data</span>
+      </div>
+      <div class="perf-chart-container"><canvas id="perf-chart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- ANALYTICS -->
+  <div class="tab-panel" id="tab-analytics">
+    <div class="analytics-kpi">
+      <div class="kpi"><div class="kpi-lbl">Win Rate</div><div class="kpi-val" id="a-winrate">—</div><div class="kpi-sub" id="a-winrate-sub">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Trading Costs</div><div class="kpi-val" id="a-costs">—</div><div class="kpi-sub">commissions + fees</div></div>
+      <div class="kpi"><div class="kpi-lbl">Dividends (gross)</div><div class="kpi-val" id="a-divgross">—</div><div class="kpi-sub" id="a-divgross-sub">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Avg P&L / Position</div><div class="kpi-val" id="a-avgpl">—</div><div class="kpi-sub" id="a-avgpl-sub">—</div></div>
+    </div>
+    <div class="analytics-charts">
+      <div class="card"><h3>Top 5 Gainers vs Losers</h3><div class="analytics-chart-container"><canvas id="gl-chart"></canvas></div></div>
+      <div class="card">
+        <h3>Cumulative P&L by Sub-Category</h3>
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap" id="cumpl-legend"></div>
+        <div class="analytics-chart-container"><canvas id="cumpl-chart"></canvas></div>
+      </div>
+    </div>
+    <div class="analytics-charts">
+      <div class="card"><h3>Open vs Closed Positions P&L</h3><div class="analytics-chart-container"><canvas id="oc-chart"></canvas></div></div>
+      <div class="card"><h3>Portfolio Concentration (Top 8)</h3><div class="analytics-chart-container"><canvas id="conc-chart"></canvas></div></div>
+    </div>
+  </div>
+
+  <!-- TRADES -->
+  <div class="tab-panel" id="tab-trades">
+    <div class="toolbar">
+      <input type="text" class="srch" id="tr-srch" placeholder="Search ticker…" style="width:180px">
+      <select class="srch" id="tr-type"><option value="all">All Types</option><option value="BUY">Buys</option><option value="SELL">Sells</option><option value="DIV">Dividends</option><option value="FEE">Fees</option></select>
+      <span style="font-size:12px;color:var(--muted);margin-left:auto" id="tr-count"></span>
+    </div>
+    <div class="tbl-wrap">
+      <table id="tr-table">
+        <thead><tr><th>Date</th><th>Ticker</th><th>Name</th><th>Type</th><th class="nr">Amount (USD)</th><th class="nr">Commission</th></tr></thead>
+        <tbody id="tr-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div id="drop-overlay"><div class="di">📂</div><div>Drop your Saxo Excel file to update</div></div>
+<div class="loading-overlay" id="loading"><div class="spinner"></div><div class="loading-text">Parsing portfolio…</div></div>
+<input type="file" id="file-input" accept=".xlsx,.xls" style="display:none">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script>
+'use strict';
+
+// ── CONSTANTS ──
+const CATEGORY_MAP = {
+  'IVV':{'category':'ETF','subCategory':'ETF_Core US Market'},
+  'QQQM':{'category':'ETF','subCategory':'ETF_Core US Market'},
+  'IAU':{'category':'ETF','subCategory':'ETF_Metal'},
+  'SIVR':{'category':'ETF','subCategory':'ETF_Metal'},
+  'NKE':{'category':'Stock','subCategory':'Stock DOW'},
+  'NVDA':{'category':'Stock','subCategory':'Stock Growth'},
+  'MSFT':{'category':'Stock','subCategory':'Stock Value'},
+  'GOOGL':{'category':'Stock','subCategory':'Stock Growth'},
+  'IBIT':{'category':'ETF','subCategory':'Crypto Exposure'},
+  'PG':{'category':'Stock','subCategory':'Stock DOW'},
+  'VZ':{'category':'Stock','subCategory':'Stock DOW'},
+  'BIDU':{'category':'Stock','subCategory':'Stock Growth'},
+  'META':{'category':'Stock','subCategory':'Stock Growth'},
+  'ZBH':{'category':'Stock','subCategory':'Stock Growth'},
+  'HUBS':{'category':'Stock','subCategory':'Stock Growth'},
+  'VEA':{'category':'ETF','subCategory':'ETF_Core Glob Market'},
+  'DELL':{'category':'Stock','subCategory':'Stock Growth'},
+  'SPUS':{'category':'ETF','subCategory':'ETF_Core US Market'},
+  'EDOW':{'category':'ETF','subCategory':'ETF_Core US Market'},
+  'MVV':{'category':'ETF','subCategory':'ETF_Core US Market'},
+  'DOW':{'category':'Stock','subCategory':'Stock DOW'},
+  'MRK':{'category':'Stock','subCategory':'Stock DOW'},
+  'VWO':{'category':'ETF','subCategory':'ETF_Core Glob Market'},
+  'VBR':{'category':'ETF','subCategory':'ETF_Core US Market'},
+  'VOE':{'category':'ETF','subCategory':'ETF_Core US Market'},
+  'AMZN':{'category':'Stock','subCategory':'Stock Growth'},
+  'AMD':{'category':'Stock','subCategory':'Stock Growth'},
+  'AXON':{'category':'Stock','subCategory':'Stock Growth'},
+  'SMH':{'category':'ETF','subCategory':'ETF_Core US Market'},
+  'VXUS':{'category':'ETF','subCategory':'ETF_Core Glob Market'},
+  'NUAI':{'category':'ETF','subCategory':'ETF_Core US Market'},
+};
+
+const SC_COLORS = {
+  'ETF_Core US Market':'#3b82f6','ETF_Metal':'#f59e0b',
+  'ETF_Core Glob Market':'#14b8a6','Crypto Exposure':'#f97316',
+  'Stock DOW':'#8b5cf6','Stock Growth':'#22c55e','Stock Value':'#6366f1','Other':'#94a3b8'
+};
+
+// palette for multi-line charts
+const LINE_PALETTE = ['#3b82f6','#22c55e','#f59e0b','#8b5cf6','#ef4444','#14b8a6','#f97316','#6366f1','#ec4899','#84cc16'];
+
+// ── STATE ──
+let DATA = null;
+let charts = {};
+let perfPeriod = 'ALL', perfMode = 'value';
+let sortCol = 'currentValue', sortDir = -1;
+
+// ── UTILS ──
+const fmt  = (n,d=0) => n==null?'—':new Intl.NumberFormat('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}).format(n);
+const fmtU = (n,d=0) => n==null?'—':'$'+fmt(n,d);
+const fmtP = (n,d=1) => n==null?'—':(n>=0?'+':'')+fmt(n,d)+'%';
+
+function parseDDMMYYYY(s) {
+  if (!s) return new Date(0);
+  if (s instanceof Date) return s;
+  const str = String(s).trim();
+  if (/^\d{2}-\d{2}-\d{4}$/.test(str)) {
+    const [d,m,y] = str.split('-');
+    return new Date(+y, +m-1, +d);
+  }
+  return new Date(str);
+}
+const dateFmt = s => { const d=parseDDMMYYYY(s); return isNaN(d)?s:d.toLocaleDateString('en-AU',{day:'2-digit',month:'short',year:'numeric'}); };
+const dateShort = s => { const d=parseDDMMYYYY(s); return isNaN(d)?s:d.toLocaleDateString('en-AU',{day:'2-digit',month:'short'}); };
+const extractTicker = sym => sym ? String(sym).split(':')[0].toUpperCase().trim() : null;
+
+function filterByPeriod(timeline, period) {
+  if (period === 'ALL' || !timeline.length) return timeline;
+  const last = parseDDMMYYYY(timeline[timeline.length-1].date);
+  let cutoff;
+  if (period === 'YTD') cutoff = new Date(last.getFullYear(), 0, 1);
+  else {
+    const months = {M1:1,M3:3,M6:6,'1M':1,'3M':3,'6M':6}[period] || parseInt(period);
+    cutoff = new Date(last); cutoff.setMonth(cutoff.getMonth() - months);
+  }
+  return timeline.filter(t => parseDDMMYYYY(t.date) >= cutoff);
+}
+
+// ── PROCESSING ──
+function processWorkbook(wb) {
+  const cashSheet = wb.Sheets['Cash Movements'];
+  const plSheet   = wb.Sheets['PL'];
+  const perfSheet = wb.Sheets['Performance'];
+  if (!cashSheet || !plSheet || !perfSheet) throw new Error('Missing required sheets.');
+  const cashData = processCashMovements(cashSheet);
+  const plData   = processPL(plSheet);
+  const perfData = processPerformance(perfSheet);
+  return mergeData(cashData, plData, perfData);
+}
+
+function processCashMovements(sheet) {
+  const rows = XLSX.utils.sheet_to_json(sheet, {defval:null});
+  const posMap = {};
+  const tradeMap = {};
+  const trades = [];
+  let totalDeposited=0, totalCommissions=0, totalFees=0;
+  const depositTimeline = [];
+
+  rows.forEach(row => {
+    const sym     = row['Instrument Symbol'];
+    const amtType = String(row['Amount Type Name']||'').trim();
+    const amount  = parseFloat(row['Amount'])||0;
+    const desc    = row['Instrument Description']||'';
+    const asset   = row['Asset type']||'';
+    const date    = row['Date']||'';
+    const rawT    = sym ? extractTicker(sym) : null;
+
+    // Cash deposits / inter-account transfers
+    if (!sym || rawT === 'CASHINTRTP' || amtType === 'Cash Amount') {
+      if (amtType === 'Cash Amount' && amount > 0) {
+        totalDeposited += amount;
+        depositTimeline.push({date, amount});
+      }
+      return;
+    }
+    // Portfolio-level fees (no specific instrument)
+    if (amtType === 'Client Custody Fee' || amtType === 'Depository Charges') {
+      totalFees += Math.abs(amount);
+      trades.push({date, ticker:'—', description: amtType, type:'FEE', amount: Math.abs(amount), commission:0});
+      return;
+    }
+
+    const ticker = rawT;
+    if (!ticker) return;
+
+    if (!posMap[ticker]) posMap[ticker] = {
+      ticker, description:desc, assetType:asset,
+      netCashFlow:0, buyCost:0, sellProceeds:0, commissions:0,
+      dividends:0, withholdingTax:0
+    };
+    const pos = posMap[ticker];
+
+    if (amtType === 'Share Amount') {
+      pos.netCashFlow += amount;
+      if (amount < 0) {
+        pos.buyCost += Math.abs(amount);
+        const key = `${ticker}|${date}|BUY`;
+        if (!tradeMap[key]) { tradeMap[key]={date,ticker,description:desc,type:'BUY',amount:0,commission:0}; trades.push(tradeMap[key]); }
+        tradeMap[key].amount += Math.abs(amount);
+      } else {
+        pos.sellProceeds += amount;
+        pos.netCashFlow += 0; // already added above
+        const key = `${ticker}|${date}|SELL`;
+        if (!tradeMap[key]) { tradeMap[key]={date,ticker,description:desc,type:'SELL',amount:0,commission:0}; trades.push(tradeMap[key]); }
+        tradeMap[key].amount += amount;
+      }
+    } else if (amtType === 'Commission') {
+      pos.commissions += Math.abs(amount);
+      pos.netCashFlow += amount; // commissions reduce net cash flow
+      totalCommissions += Math.abs(amount);
+      // attach to matching trade
+      const bk=`${ticker}|${date}|BUY`, sk=`${ticker}|${date}|SELL`;
+      if (tradeMap[bk]) tradeMap[bk].commission += Math.abs(amount);
+      if (tradeMap[sk]) tradeMap[sk].commission += Math.abs(amount);
+    } else if (amtType === 'Corporate Actions - Cash Dividends') {
+      pos.dividends += amount;
+      trades.push({date, ticker, description:'Dividend – '+desc, type:'DIV', amount, commission:0});
+    } else if (amtType === 'Corporate Actions - Withholding Tax') {
+      pos.withholdingTax += Math.abs(amount);
+    }
+  });
+
+  trades.sort((a,b) => parseDDMMYYYY(b.date) - parseDDMMYYYY(a.date));
+  return { posMap, trades, totalDeposited, totalCommissions, totalFees, depositTimeline };
+}
+
+function processPL(sheet) {
+  const rows = XLSX.utils.sheet_to_json(sheet, {defval:null});
+  const plByTicker = {};
+  const dailyByTicker = {};
+
+  rows.forEach(row => {
+    const sym = row['Instrument Symbol'];
+    if (!sym) return;
+    const ticker = extractTicker(sym);
+    if (!ticker) return;
+    const amount = parseFloat(row['Amount'])||0;
+    const date   = row['Date']||'';
+    plByTicker[ticker] = (plByTicker[ticker]||0) + amount;
+    if (!dailyByTicker[ticker]) dailyByTicker[ticker] = [];
+    dailyByTicker[ticker].push({date, amount});
+  });
+
+  // Build cumulative P&L timelines per ticker
+  const cumPlTimeline = {};
+  Object.keys(dailyByTicker).forEach(ticker => {
+    const sorted = dailyByTicker[ticker].sort((a,b) => parseDDMMYYYY(a.date) - parseDDMMYYYY(b.date));
+    let c = 0;
+    cumPlTimeline[ticker] = sorted.map(d => { c += d.amount; return {date:d.date, value:c}; });
+  });
+
+  return { plByTicker, cumPlTimeline, dailyByTicker };
+}
+
+function processPerformance(sheet) {
+  const rows = XLSX.utils.sheet_to_json(sheet, {defval:null});
+  const timeline = [];
+  rows.forEach(row => {
+    const val = parseFloat(row['AccountValueTimeSeries']);
+    if (val && val > 100) timeline.push({date: row['Date'], value: val});
+  });
+  timeline.sort((a,b) => parseDDMMYYYY(a.date).getTime() - parseDDMMYYYY(b.date).getTime());
+  const latest = timeline[timeline.length-1];
+  return { timeline, currentValue: latest?.value||0, latestDate: latest?.date||'' };
+}
+
+function mergeData(cashData, plData, perfData) {
+  const {posMap, trades, totalDeposited, totalCommissions, totalFees, depositTimeline} = cashData;
+  const {plByTicker, cumPlTimeline, dailyByTicker} = plData;
+  const positions = [];
+
+  Object.values(posMap).forEach(pos => {
+    const totalPL    = plByTicker[pos.ticker]||0;
+    // Net cost basis = net cash out = buyCost + commissions - sellProceeds
+    const netCostBasis = pos.buyCost + pos.commissions - pos.sellProceeds;
+    const grossCost    = pos.buyCost + pos.commissions;
+    const currentValue = netCostBasis + totalPL;
+    const plPct        = netCostBasis > 0 ? (totalPL/netCostBasis)*100 : (netCostBasis < 0 ? null : 0);
+    const cat          = CATEGORY_MAP[pos.ticker] || {category: pos.assetType||'Other', subCategory:'Other'};
+    const netDiv       = pos.dividends - pos.withholdingTax;
+
+    positions.push({
+      ticker: pos.ticker, description: pos.description, assetType: pos.assetType,
+      category: cat.category, subCategory: cat.subCategory,
+      grossCost, netCostBasis, sellProceeds: pos.sellProceeds,
+      currentValue, totalPL, plPct,
+      dividends: netDiv, grossDividends: pos.dividends, withholdingTax: pos.withholdingTax,
+      weight: 0,
+      isOpen: currentValue > 50
+    });
+  });
+
+  const totalPortfolioValue = perfData.currentValue ||
+    positions.filter(p=>p.isOpen).reduce((s,p)=>s+p.currentValue,0);
+  const investedValue = positions.filter(p=>p.isOpen).reduce((s,p)=>s+p.currentValue,0);
+
+  positions.forEach(p => { p.weight = totalPortfolioValue>0 ? (p.currentValue/totalPortfolioValue)*100 : 0; });
+
+  const totalPL    = totalPortfolioValue - totalDeposited;
+  const totalPLPct = totalDeposited>0 ? (totalPL/totalDeposited)*100 : 0;
+  const totalDivGross = positions.reduce((s,p)=>s+p.grossDividends,0);
+  const totalWHT      = positions.reduce((s,p)=>s+p.withholdingTax,0);
+  const totalDivNet   = totalDivGross - totalWHT;
+
+  const open   = positions.filter(p=>p.isOpen);
+  const bestPos = open.reduce((b,p)=>(!b||p.totalPL>b.totalPL)?p:b, null);
+  const winRate = open.length>0 ? (open.filter(p=>p.totalPL>0).length/open.length*100) : 0;
+
+  // Build accurate P&L timeline: portfolio value minus cumulative deposits at each point in time
+  const sortedDeposits = [...depositTimeline].sort((a,b) => parseDDMMYYYY(a.date).getTime() - parseDDMMYYYY(b.date).getTime());
+  let cumulDep = 0, dIdx = 0;
+  const plTimeline = perfData.timeline.map(pt => {
+    const ptMs = parseDDMMYYYY(pt.date).getTime();
+    while (dIdx < sortedDeposits.length && parseDDMMYYYY(sortedDeposits[dIdx].date).getTime() <= ptMs) {
+      cumulDep += sortedDeposits[dIdx].amount;
+      dIdx++;
+    }
+    return { date: pt.date, value: pt.value - cumulDep };
+  });
+
+  return {
+    positions, trades,
+    performance: perfData,
+    plTimeline,
+    cumPlTimeline, dailyByTicker,
+    summary: {
+      totalPortfolioValue, totalDeposited, investedValue,
+      cashBalance: totalPortfolioValue - investedValue,
+      totalPL, totalPLPct, totalDivNet, totalDivGross, totalWHT,
+      totalCommissions, totalFees, totalTradingCosts: totalCommissions+totalFees,
+      bestPos, winRate, latestDate: perfData.latestDate
+    }
+  };
+}
+
+// ── RENDER ──
+function renderAll(data) {
+  DATA = data;
+  const s = data.summary;
+
+  // KPI strip
+  setText('k-total', fmtU(s.totalPortfolioValue));
+  setText('k-total-sub', `Cash: ${fmtU(s.cashBalance)} · Invested: ${fmtU(s.investedValue)}`);
+  const plEl = document.getElementById('k-pl');
+  plEl.textContent = fmtU(s.totalPL);
+  plEl.className = 'kpi-val '+(s.totalPL>=0?'kpi-pos':'kpi-neg');
+  setText('k-pl-sub', fmtP(s.totalPLPct)+' total return');
+  setText('k-dep', fmtU(s.totalDeposited));
+  setText('k-dep-sub', `${data.trades.filter(t=>t.type==='BUY').length} buy trades`);
+  setText('k-div', fmtU(s.totalDivNet));
+  setText('k-div-sub', `Gross ${fmtU(s.totalDivGross)} · WHT ${fmtU(s.totalWHT)}`);
+  if (s.bestPos) {
+    setText('k-best', s.bestPos.ticker);
+    setText('k-best-sub', fmtU(s.bestPos.totalPL)+' ('+fmtP(s.bestPos.plPct)+')');
+  }
+  setText('last-updated', 'Updated: '+(s.latestDate ? dateFmt(s.latestDate) : '—'));
+
+  renderDonut(data);
+  renderAllocTable(data);
+  renderPositions(data);
+  renderPerformanceChart();
+  renderAnalytics(data);
+  renderTrades(data);
+  populateFilters(data);
+
+  document.getElementById('upload-screen').style.display = 'none';
+  const db = document.getElementById('dashboard');
+  db.style.display = 'flex';
+  db.style.flexDirection = 'column';
+}
+
+function setText(id, v) { const el=document.getElementById(id); if(el) el.textContent=v; }
+
+function destroyChart(id) { if(charts[id]) { charts[id].destroy(); delete charts[id]; } }
+
+// Overview donut
+function renderDonut(data) {
+  const bySubCat = {};
+  data.positions.filter(p=>p.isOpen).forEach(p => {
+    bySubCat[p.subCategory||'Other'] = (bySubCat[p.subCategory||'Other']||0) + p.currentValue;
+  });
+  const labels = Object.keys(bySubCat).sort((a,b)=>bySubCat[b]-bySubCat[a]);
+  const values = labels.map(l=>bySubCat[l]);
+  const colors = labels.map(l=>SC_COLORS[l]||'#94a3b8');
+  destroyChart('donut');
+  charts['donut'] = new Chart(document.getElementById('donut-chart').getContext('2d'), {
+    type:'doughnut',
+    data:{labels, datasets:[{data:values, backgroundColor:colors, borderWidth:2, borderColor:'#fff', hoverOffset:5}]},
+    options:{responsive:true, maintainAspectRatio:false, cutout:'66%',
+      plugins:{legend:{display:false},
+        tooltip:{callbacks:{label: c => ` ${fmtU(c.raw)} (${fmtP(c.raw/data.summary.totalPortfolioValue*100,1)})`}}}}
+  });
+}
+
+// Overview allocation table
+function renderAllocTable(data) {
+  const bySubCat = {};
+  data.positions.filter(p=>p.isOpen).forEach(p => {
+    bySubCat[p.subCategory||'Other'] = (bySubCat[p.subCategory||'Other']||0) + p.currentValue;
+  });
+  const sorted = Object.entries(bySubCat).sort((a,b)=>b[1]-a[1]);
+  const total  = data.summary.totalPortfolioValue;
+  const tb = document.getElementById('alloc-tbody');
+  tb.innerHTML = '';
+  sorted.forEach(([sc, val]) => {
+    const pct = total>0 ? val/total*100 : 0;
+    const col = SC_COLORS[sc]||'#94a3b8';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><span class="dot" style="background:${col}"></span>${sc}</td>
+      <td class="nr">${fmtU(val)}</td><td class="nr">${fmtP(pct,1)}</td>
+      <td><div class="alloc-bar-cell"><div class="alloc-bar-wrap"><div class="alloc-bar-fill" style="width:${pct}%;background:${col}"></div></div></div></td>`;
+    tb.appendChild(tr);
+  });
+}
+
+// Positions table
+function renderPositions(data, search='', catF='all', subcatF='all', statusF='open') {
+  let pos = data.positions;
+  if (statusF === 'open') pos = pos.filter(p=>p.isOpen);
+  if (search) { const q=search.toLowerCase(); pos=pos.filter(p=>p.ticker.toLowerCase().includes(q)||p.description.toLowerCase().includes(q)); }
+  if (catF !== 'all') pos = pos.filter(p=>p.category===catF);
+  if (subcatF !== 'all') pos = pos.filter(p=>p.subCategory===subcatF);
+  pos.sort((a,b) => {
+    const av=a[sortCol]??'', bv=b[sortCol]??'';
+    return typeof av==='number' ? sortDir*(bv-av) : sortDir*String(av).localeCompare(String(bv));
+  });
+  const tb = document.getElementById('pos-tbody');
+  tb.innerHTML = '';
+  if (!pos.length) {
+    tb.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:20px">No positions match.</td></tr>';
+    return;
+  }
+  pos.forEach(p => {
+    const col = SC_COLORS[p.subCategory]||'#94a3b8';
+    const plPos = p.totalPL >= 0;
+    const isOpen = p.isOpen;
+    const tr = document.createElement('tr');
+    if (!isOpen) tr.style.opacity = '0.55';
+    tr.innerHTML = `
+      <td><strong style="color:${col}">${p.ticker}</strong></td>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.description}">${p.description}</td>
+      <td><span class="badge ${p.category==='ETF'?'b-etf':'b-stk'}">${p.category}</span></td>
+      <td style="font-size:11px;color:var(--muted)">${p.subCategory}</td>
+      <td class="nr" style="color:var(--muted)">${fmtU(p.grossCost)}</td>
+      <td class="nr">${fmtU(p.netCostBasis)}</td>
+      <td class="nr">${fmtU(p.currentValue)}</td>
+      <td class="nr ${plPos?'pos':'neg'}">${plPos?'+':''}${fmtU(p.totalPL)}</td>
+      <td class="nr ${plPos?'pos':'neg'}">${p.plPct!=null?fmtP(p.plPct):'—'}</td>
+      <td class="nr">${p.dividends>0?fmtU(p.dividends):'—'}</td>
+      <td class="nr">${fmtP(p.weight,1)}<span class="w-bar"><span class="w-fill" style="width:${Math.min(p.weight,100)}%"></span></span></td>`;
+    tb.appendChild(tr);
+  });
+}
+
+// Performance chart (main)
+function renderPerformanceChart() {
+  if (!DATA) return;
+  const ticker  = document.getElementById('perf-ticker')?.value || 'all';
+  const subcat  = document.getElementById('perf-subcat')?.value || 'all';
+  const mode    = perfMode;
+  const period  = perfPeriod;
+
+  destroyChart('perf');
+
+  let datasets = [];
+  let chartLabels = [];
+  let titleText = '', subText = '';
+  let yMin = null;
+
+  if (mode === 'value') {
+    if (ticker !== 'all') {
+      // Single ticker value = net cost basis + cumulative P&L at each date
+      const pos = DATA.positions.find(p => p.ticker === ticker);
+      const netCostBasis = pos ? pos.netCostBasis : 0;
+      const tl = filterByPeriod(DATA.cumPlTimeline[ticker] || [], period);
+      chartLabels = tl.map(t => dateShort(t.date));
+      const values = tl.map(t => netCostBasis + t.value);
+      yMin = values.length ? Math.min(...values) * 0.97 : null;
+      const c = SC_COLORS[pos?.subCategory] || '#2563eb';
+      datasets = [{label:`${ticker} Value`, data:values, borderColor:c, backgroundColor:buildGradient('perf-chart',c), borderWidth:2, pointRadius:0, pointHoverRadius:4, fill:true, tension:.3}];
+      titleText = `Position Value — ${ticker}`;
+      subText = 'Net cost basis + cumulative P&L';
+    } else if (subcat !== 'all') {
+      // Sub-category value = sum of (netCostBasis + cumPL) for each ticker in sub-cat
+      const posInCat = DATA.positions.filter(p => p.subCategory === subcat);
+      const tickersInCat = posInCat.map(p => p.ticker);
+      const sumNetCostBasis = posInCat.reduce((s, p) => s + p.netCostBasis, 0);
+      const {labels: aggLabels, cumulValues} = aggregateDailyPL(tickersInCat, period);
+      chartLabels = aggLabels;
+      const values = cumulValues.map(v => sumNetCostBasis + v);
+      yMin = values.length ? Math.min(...values) * 0.97 : null;
+      const col = SC_COLORS[subcat] || '#2563eb';
+      datasets = [{label:`${subcat} Value`, data:values, borderColor:col, backgroundColor:buildGradient('perf-chart',col), borderWidth:2, pointRadius:0, pointHoverRadius:4, fill:true, tension:.3}];
+      titleText = `Sub-Category Value — ${subcat}`;
+      subText = 'Net cost basis + cumulative P&L for all positions in sub-category';
+    } else {
+      // Full portfolio value from Performance sheet
+      const tl = filterByPeriod(DATA.performance.timeline, period);
+      chartLabels = tl.map(t => dateShort(t.date));
+      const values = tl.map(t => t.value);
+      yMin = values.length ? Math.min(...values) * 0.97 : null;
+      datasets = [{label:'Portfolio Value', data:values, borderColor:'#2563eb', backgroundColor:buildGradient('perf-chart','#2563eb'), borderWidth:2, pointRadius:0, pointHoverRadius:4, fill:true, tension:.3}];
+      titleText = 'Portfolio Value Over Time';
+      subText = 'Account value (USD) — Saxo Bank data';
+    }
+  } else {
+    // Cumulative P&L mode
+    if (ticker !== 'all') {
+      // Single ticker — use per-ticker daily P&L timeline
+      const tl = filterByPeriod(DATA.cumPlTimeline[ticker] || [], period);
+      chartLabels = tl.map(t => dateShort(t.date));
+      const values = tl.map(t => t.value);
+      const c = SC_COLORS[DATA.positions.find(p=>p.ticker===ticker)?.subCategory]||'#3b82f6';
+      yMin = values.length ? Math.min(...values)*1.05 : null;
+      datasets = [{label:ticker, data:values, borderColor:c, backgroundColor:buildGradient('perf-chart',c), borderWidth:2, pointRadius:0, pointHoverRadius:4, fill:true, tension:.3}];
+      titleText = `Cumulative P&L — ${ticker}`;
+      subText = 'Unrealized daily mark-to-market P&L';
+    } else if (subcat !== 'all') {
+      // By sub-category: aggregate tickers in that sub-cat
+      const tickersInCat = DATA.positions.filter(p=>p.subCategory===subcat).map(p=>p.ticker);
+      const {labels: aggLabels, cumulValues} = aggregateDailyPL(tickersInCat, period);
+      chartLabels = aggLabels;
+      yMin = cumulValues.length ? Math.min(...cumulValues)*1.05 : null;
+      const col = SC_COLORS[subcat]||'#3b82f6';
+      datasets = [{label:subcat, data:cumulValues, borderColor:col, backgroundColor:buildGradient('perf-chart',col), borderWidth:2, pointRadius:0, pointHoverRadius:4, fill:true, tension:.3}];
+      titleText = `Cumulative P&L — ${subcat}`;
+      subText = 'Combined P&L for all positions in sub-category';
+    } else {
+      // All positions: use accurate plTimeline (value - cumulative deposits at each date)
+      const tl = filterByPeriod(DATA.plTimeline || DATA.performance.timeline, period);
+      chartLabels = tl.map(t => dateShort(t.date));
+      const values = tl.map(t => t.value);
+      yMin = values.length ? Math.min(...values)*1.05 : null;
+      datasets = [{label:'Portfolio P&L', data:values, borderColor:'#22c55e', backgroundColor:buildGradient('perf-chart','#22c55e'), borderWidth:2, pointRadius:0, pointHoverRadius:4, fill:true, tension:.3}];
+      titleText = 'Total Portfolio Cumulative P&L';
+      subText = 'Portfolio value minus cumulative deposits at each date';
+    }
+  }
+
+  setText('perf-chart-title', titleText);
+  setText('perf-chart-sub', subText);
+
+  const ctx = document.getElementById('perf-chart').getContext('2d');
+  charts['perf'] = new Chart(ctx, {
+    type:'line',
+    data:{ labels: chartLabels, datasets },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index', intersect:false},
+      scales:{
+        x:{ grid:{display:false}, ticks:{maxTicksLimit:10, font:{size:10}} },
+        y:{
+          min: yMin != null ? (yMin < 0 ? yMin * 1.05 : yMin) : undefined,
+          grid:{color:'#f3f4f6'},
+          ticks:{callback: v => mode==='value'?'$'+fmt(v):(v>=0?'+$':'-$')+fmt(Math.abs(v)), font:{size:10}}
+        }
+      },
+      plugins:{
+        legend:{display: datasets.length>1},
+        tooltip:{callbacks:{label: c => ` ${c.dataset.label}: ${mode==='value'?fmtU(c.raw):(c.raw>=0?'+':'')+fmtU(c.raw)}`}}
+      }
+    }
+  });
+}
+
+function buildGradient(canvasId, color) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return 'transparent';
+  const ctx = canvas.getContext('2d');
+  const g = ctx.createLinearGradient(0,0,0,300);
+  g.addColorStop(0, color+'33');
+  g.addColorStop(1, color+'00');
+  return g;
+}
+
+function aggregateDailyPL(tickers, period) {
+  // Collect all daily P&L entries from multiple tickers, merge by date, cumulate
+  const dailyMap = {};
+  tickers.forEach(ticker => {
+    (DATA.dailyByTicker[ticker]||[]).forEach(entry => {
+      dailyMap[entry.date] = (dailyMap[entry.date]||0) + entry.amount;
+    });
+  });
+  let entries = Object.entries(dailyMap).map(([date,amount])=>({date,amount}));
+  entries.sort((a,b)=>parseDDMMYYYY(a.date)-parseDDMMYYYY(b.date));
+  entries = filterByPeriod(entries, period);
+  let c = 0;
+  const labels = [], cumulValues = [];
+  entries.forEach(e => { c += e.amount; labels.push(dateShort(e.date)); cumulValues.push(c); });
+  return {labels, cumulValues};
+}
+
+// Analytics
+function renderAnalytics(data) {
+  const s = data.summary;
+  const open = data.positions.filter(p=>p.isOpen);
+  const closed = data.positions.filter(p=>!p.isOpen);
+
+  // KPIs
+  setText('a-winrate', Math.round(s.winRate)+'%');
+  setText('a-winrate-sub', `${open.filter(p=>p.totalPL>0).length} of ${open.length} positions profitable`);
+  setText('a-costs', fmtU(s.totalTradingCosts));
+  setText('a-divgross', fmtU(s.totalDivGross));
+  setText('a-divgross-sub', `WHT deducted: ${fmtU(s.totalWHT)}`);
+  const avgPL = open.length ? open.reduce((s,p)=>s+p.totalPL,0)/open.length : 0;
+  setText('a-avgpl', fmtU(avgPL));
+  setText('a-avgpl-sub', `across ${open.length} open positions`);
+
+  renderGLChart(data);
+  renderCumPLChart(data);
+  renderOCChart(data, open, closed);
+  renderConcChart(data, open);
+}
+
+function renderGLChart(data) {
+  const open = data.positions.filter(p=>p.isOpen);
+  const sorted = [...open].sort((a,b)=>b.totalPL-a.totalPL);
+  const top5 = sorted.slice(0,5);
+  const bot5 = sorted.slice(-5).reverse();
+  const items = [...top5, ...bot5.filter(p=>!top5.includes(p))].slice(0,10);
+  const labels = items.map(p=>p.ticker);
+  const values = items.map(p=>p.totalPL);
+  const colors = values.map(v=>v>=0?'#22c55e':'#ef4444');
+  destroyChart('gl');
+  charts['gl'] = new Chart(document.getElementById('gl-chart').getContext('2d'), {
+    type:'bar',
+    data:{labels, datasets:[{data:values, backgroundColor:colors, borderRadius:4}]},
+    options:{
+      responsive:true, maintainAspectRatio:false, indexAxis:'y',
+      plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>' '+fmtU(c.raw)}}},
+      scales:{
+        x:{grid:{color:'#f3f4f6'}, ticks:{callback:v=>fmtU(v), font:{size:10}}},
+        y:{grid:{display:false}, ticks:{font:{size:11}}}
+      }
+    }
+  });
+}
+
+function renderCumPLChart(data) {
+  // One line per sub-category using daily P&L aggregation
+  const subcats = [...new Set(data.positions.filter(p=>p.isOpen).map(p=>p.subCategory))];
+  const allDates = new Set();
+  subcats.forEach(sc => {
+    const tickers = data.positions.filter(p=>p.subCategory===sc).map(p=>p.ticker);
+    tickers.forEach(t => (data.dailyByTicker[t]||[]).forEach(d=>allDates.add(d.date)));
+  });
+  const sortedDates = [...allDates].sort((a,b)=>parseDDMMYYYY(a)-parseDDMMYYYY(b));
+
+  const datasets = subcats.map((sc,i) => {
+    const tickers = data.positions.filter(p=>p.subCategory===sc).map(p=>p.ticker);
+    const {cumulValues} = aggregateDailyPL(tickers, 'ALL');
+    // Build array aligned to sortedDates
+    const dailyMap = {};
+    tickers.forEach(t => (data.dailyByTicker[t]||[]).forEach(d=>{ dailyMap[d.date]=(dailyMap[d.date]||0)+d.amount; }));
+    let c=0; const vals = sortedDates.map(d=>{ c+=(dailyMap[d]||0); return c; });
+    return {label:sc, data:vals, borderColor:SC_COLORS[sc]||LINE_PALETTE[i%10], backgroundColor:'transparent', borderWidth:1.5, pointRadius:0, tension:.3};
+  });
+
+  const legend = document.getElementById('cumpl-legend');
+  legend.innerHTML = '';
+  subcats.forEach((sc,i) => {
+    const col = SC_COLORS[sc]||LINE_PALETTE[i%10];
+    legend.insertAdjacentHTML('beforeend',`<span class="cumpl-legend-item" data-idx="${i}" style="cursor:pointer;font-size:11px;display:flex;align-items:center;gap:4px;transition:opacity .2s"><span style="width:12px;height:3px;background:${col};border-radius:2px;display:inline-block"></span>${sc}</span>`);
+  });
+
+  destroyChart('cumpl');
+  charts['cumpl'] = new Chart(document.getElementById('cumpl-chart').getContext('2d'), {
+    type:'line',
+    data:{labels: sortedDates.map(d=>dateShort(d)), datasets},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index', intersect:false},
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{grid:{display:false}, ticks:{maxTicksLimit:8, font:{size:9}}},
+        y:{grid:{color:'#f3f4f6'}, ticks:{callback:v=>'$'+fmt(v), font:{size:9}}}
+      }
+    }
+  });
+}
+
+function renderOCChart(data, open, closed) {
+  const openPL   = open.reduce((s,p)=>s+p.totalPL,0);
+  const closedPL = closed.reduce((s,p)=>s+p.totalPL,0);
+  destroyChart('oc');
+  charts['oc'] = new Chart(document.getElementById('oc-chart').getContext('2d'), {
+    type:'doughnut',
+    data:{
+      labels:['Open Positions P&L','Closed Positions P&L'],
+      datasets:[{data:[Math.max(openPL,0), Math.max(closedPL,0)], backgroundColor:['#3b82f6','#22c55e'], borderWidth:2, borderColor:'#fff'}]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false, cutout:'60%',
+      plugins:{
+        legend:{position:'bottom', labels:{font:{size:11}, padding:12}},
+        tooltip:{callbacks:{label:c=>` ${fmtU(c.raw)}`}}
+      }
+    }
+  });
+}
+
+function renderConcChart(data, open) {
+  const top8 = [...open].sort((a,b)=>b.currentValue-a.currentValue).slice(0,8);
+  const colors = top8.map(p=>SC_COLORS[p.subCategory]||'#94a3b8');
+  destroyChart('conc');
+  charts['conc'] = new Chart(document.getElementById('conc-chart').getContext('2d'), {
+    type:'bar',
+    data:{
+      labels: top8.map(p=>p.ticker),
+      datasets:[{data: top8.map(p=>p.weight), backgroundColor: colors, borderRadius:4}]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>` ${fmtP(c.raw,1)} of portfolio`}}},
+      scales:{
+        x:{grid:{display:false}, ticks:{font:{size:11}}},
+        y:{grid:{color:'#f3f4f6'}, ticks:{callback:v=>v+'%', font:{size:10}}, suggestedMax:20}
+      }
+    }
+  });
+}
+
+// Trades
+function renderTrades(data, search='', typeF='all') {
+  let trades = data.trades;
+  if (search) { const q=search.toLowerCase(); trades=trades.filter(t=>t.ticker.toLowerCase().includes(q)||t.description.toLowerCase().includes(q)); }
+  if (typeF !== 'all') trades = trades.filter(t=>t.type===typeF);
+  const tb = document.getElementById('tr-tbody');
+  tb.innerHTML = '';
+  setText('tr-count', trades.length+' records');
+  if (!trades.length) { tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">No records found.</td></tr>'; return; }
+  trades.slice(0,300).forEach(t => {
+    const badge = t.type==='BUY'?'<span class="badge b-buy">BUY</span>':
+      t.type==='SELL'?'<span class="badge b-sell">SELL</span>':
+      t.type==='DIV'?'<span class="badge" style="background:#fef3c7;color:#92400e">DIV</span>':
+      '<span class="badge b-fee">FEE</span>';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td style="white-space:nowrap">${dateFmt(t.date)}</td><td><strong>${t.ticker}</strong></td>
+      <td style="font-size:11px;color:var(--muted)">${t.description}</td><td>${badge}</td>
+      <td class="nr">${fmtU(t.amount,2)}</td><td class="nr" style="color:var(--muted)">${t.commission?fmtU(t.commission,2):'—'}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+function populateFilters(data) {
+  const subcats = [...new Set(data.positions.map(p=>p.subCategory).filter(Boolean))].sort();
+  const tickers = [...new Set(data.positions.filter(p=>p.isOpen).map(p=>p.ticker))].sort();
+  fillSelect('subcat-f', subcats, 'all', 'All Sub-Categories');
+  fillSelect('perf-ticker', tickers, 'all', 'All Positions');
+  fillSelect('perf-subcat', subcats, 'all', 'All Sub-Categories');
+}
+
+function fillSelect(id, opts, allVal, allLabel) {
+  const sel = document.getElementById(id);
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = `<option value="${allVal}">${allLabel}</option>`;
+  opts.forEach(o => { const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); });
+  sel.value = cur;
+}
+
+// ── EVENT WIRING ──
+// Tabs
+document.addEventListener('click', e => {
+  const tb = e.target.closest('.tab-btn[data-tab]');
+  if (tb) {
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+    tb.classList.add('active');
+    document.getElementById('tab-'+tb.dataset.tab).classList.add('active');
+  }
+  // Pos table sort
+  const th = e.target.closest('#pos-table th[data-col]');
+  if (th && DATA) {
+    if (sortCol===th.dataset.col) sortDir*=-1;
+    else { sortCol=th.dataset.col; sortDir=-1; }
+    document.querySelectorAll('#pos-table th').forEach(h=>h.classList.remove('s-asc','s-desc'));
+    th.classList.add(sortDir===-1?'s-desc':'s-asc');
+    renderPositions(DATA, document.getElementById('pos-srch').value,
+      document.getElementById('cat-f').value, document.getElementById('subcat-f').value,
+      document.getElementById('status-f').value);
+  }
+  // Period buttons
+  const pb = e.target.closest('.period-btn[data-p]');
+  if (pb) {
+    document.querySelectorAll('.period-btn').forEach(b=>b.classList.remove('active'));
+    pb.classList.add('active');
+    perfPeriod = pb.dataset.p;
+    renderPerformanceChart();
+  }
+  // Mode buttons
+  const mb = e.target.closest('.mode-btn[data-m]');
+  if (mb) {
+    document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
+    mb.classList.add('active');
+    perfMode = mb.dataset.m;
+    renderPerformanceChart();
+  }
+});
+
+// Positions filters
+['pos-srch','cat-f','subcat-f','status-f'].forEach(id => {
+  document.getElementById(id).addEventListener(id==='pos-srch'?'input':'change', () => {
+    if (DATA) renderPositions(DATA, document.getElementById('pos-srch').value,
+      document.getElementById('cat-f').value, document.getElementById('subcat-f').value,
+      document.getElementById('status-f').value);
+  });
+});
+// Helper: rebuild a select from scratch, always resetting to 'all'
+function rebuildSelect(id, opts, allLabel) {
+  const sel = document.getElementById(id);
+  if (!sel) return;
+  sel.innerHTML = `<option value="all">${allLabel}</option>`;
+  opts.forEach(o => { const opt = document.createElement('option'); opt.value = o; opt.textContent = o; sel.appendChild(opt); });
+  sel.value = 'all';
+}
+
+// Performance filters — mutually exclusive + cascading dropdowns
+document.getElementById('perf-ticker')?.addEventListener('change', () => {
+  if (!DATA) return;
+  const selectedTicker = document.getElementById('perf-ticker').value;
+  if (selectedTicker !== 'all') {
+    // Restrict sub-cat to just the sub-category of this ticker
+    const pos = DATA.positions.find(p => p.ticker === selectedTicker);
+    const sc = pos?.subCategory;
+    rebuildSelect('perf-subcat', sc ? [sc] : [], 'All Sub-Categories');
+  } else {
+    // Restore full sub-cat list
+    const subcats = [...new Set(DATA.positions.map(p => p.subCategory).filter(Boolean))].sort();
+    rebuildSelect('perf-subcat', subcats, 'All Sub-Categories');
+  }
+  renderPerformanceChart();
+});
+
+document.getElementById('perf-subcat')?.addEventListener('change', () => {
+  if (!DATA) return;
+  const selectedSubcat = document.getElementById('perf-subcat').value;
+  if (selectedSubcat !== 'all') {
+    // Restrict ticker to positions within this sub-category
+    const tickers = DATA.positions.filter(p => p.isOpen && p.subCategory === selectedSubcat).map(p => p.ticker).sort();
+    rebuildSelect('perf-ticker', tickers, 'All Positions');
+  } else {
+    // Restore full ticker list
+    const tickers = DATA.positions.filter(p => p.isOpen).map(p => p.ticker).sort();
+    rebuildSelect('perf-ticker', tickers, 'All Positions');
+  }
+  renderPerformanceChart();
+});
+
+// Cumulative P&L by sub-category legend: click to toggle series
+document.getElementById('cumpl-legend').addEventListener('click', e => {
+  const item = e.target.closest('.cumpl-legend-item');
+  if (!item || !charts['cumpl']) return;
+  const idx = parseInt(item.dataset.idx);
+  const meta = charts['cumpl'].getDatasetMeta(idx);
+  meta.hidden = !meta.hidden;
+  item.style.opacity = meta.hidden ? '0.35' : '1';
+  charts['cumpl'].update();
+});
+// Trades filters
+['tr-srch','tr-type'].forEach(id => {
+  document.getElementById(id).addEventListener(id==='tr-srch'?'input':'change', () => {
+    if (DATA) renderTrades(DATA, document.getElementById('tr-srch').value, document.getElementById('tr-type').value);
+  });
+});
+
+// ── FILE HANDLING ──
+function handleFile(file) {
+  if (!file || !file.name.match(/\.xlsx?$/i)) { alert('Please select an .xlsx file.'); return; }
+  const loading = document.getElementById('loading');
+  loading.classList.add('active');
+  setTimeout(() => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const data = XLSX.read(new Uint8Array(e.target.result), {type:'array'});
+        const result = processWorkbook(data);
+        localStorage.setItem('portfolioData', JSON.stringify(result));
+        localStorage.setItem('portfolioUpdated', new Date().toISOString());
+        renderAll(result);
+      } catch(err) {
+        alert('Error parsing file:\n'+err.message);
+        console.error(err);
+      } finally { loading.classList.remove('active'); }
+    };
+    reader.readAsArrayBuffer(file);
+  }, 50);
+}
+
+// Upload screen
+const uz = document.getElementById('upload-drop-zone');
+uz.addEventListener('dragover', e=>{e.preventDefault(); uz.classList.add('drag-over');});
+uz.addEventListener('dragleave', ()=>uz.classList.remove('drag-over'));
+uz.addEventListener('drop', e=>{e.preventDefault(); uz.classList.remove('drag-over'); handleFile(e.dataTransfer.files[0]);});
+document.getElementById('browse-btn').addEventListener('click', ()=>document.getElementById('file-input').click());
+document.getElementById('file-input').addEventListener('change', e=>{handleFile(e.target.files[0]); e.target.value='';});
+document.getElementById('update-btn').addEventListener('click', ()=>document.getElementById('file-input').click());
+
+// Dashboard drop
+document.addEventListener('dragover', e=>{if(DATA){e.preventDefault(); document.getElementById('drop-overlay').classList.add('active');}});
+document.addEventListener('dragleave', e=>{if(!e.relatedTarget) document.getElementById('drop-overlay').classList.remove('active');});
+document.addEventListener('drop', e=>{e.preventDefault(); document.getElementById('drop-overlay').classList.remove('active'); if(DATA) handleFile(e.dataTransfer.files[0]);});
+
+// ── INIT ──
+(function() {
+  try {
+    const saved = localStorage.getItem('portfolioData');
+    if (saved) { renderAll(JSON.parse(saved)); }
+  } catch(e) { console.warn('Could not restore:', e); }
+})();
+</script>
+</body>
+</html>
