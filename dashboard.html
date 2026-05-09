@@ -167,11 +167,13 @@
 <div id="upload-screen">
   <div class="up-logo">📈</div>
   <h2 class="up-title">Portfolio Dashboard</h2>
-  <p class="up-sub">Drop your Saxo Bank export to get started</p>
+  <p class="up-sub">Drop your Saxo Bank exports to get started</p>
   <div class="drop-zone" id="upload-drop-zone">
     <div class="drop-zone-icon">📂</div>
-    <h3>Drop your Saxo AggregatedAmounts Excel file here</h3>
-    <p>Requires the export with sheets: <strong>Cash Movements · PL · Performance</strong></p>
+    <h3>Drop your Saxo Excel files here</h3>
+    <p>Supports two Saxo exports (drop either or both):</p>
+    <p style="margin-top:6px"><strong>AggregatedAmounts</strong> — P&L, performance, cash movements</p>
+    <p><strong>Transactions</strong> — unit prices, shares, avg buy price</p>
     <button class="browse-btn" id="browse-btn">Browse file</button>
   </div>
   <p class="up-note">All data stays in your browser — nothing is uploaded anywhere. Saved locally for next time.</p>
@@ -183,6 +185,7 @@
     <div class="h-left"><span>📈</span><h1>Portfolio Dashboard</h1></div>
     <div class="h-right">
       <span id="last-updated"></span>
+      <span id="tx-badge" style="display:none;font-size:11px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;padding:3px 8px;border-radius:6px">📋 Transactions ✓</span>
       <button class="upd-btn" id="update-btn">⬆ Update File</button>
       <button class="upd-btn" id="export-btn" onclick="exportToCommandCenter()" style="background:#10b981">📤 Export to Command Center</button>
     </div>
@@ -237,8 +240,8 @@
           <th data-col="plPct" class="nr">P&L (%)</th>
           <th data-col="dividends" class="nr">Divs (net)</th>
           <th data-col="weight" class="nr">Weight</th>
-          <th data-col="peakValue" class="nr" title="Highest position market value since tracking started">Peak Value</th>
-          <th data-col="troughValue" class="nr" title="Lowest position market value since tracking started">Trough Value</th>
+          <th data-col="sharesHeld" class="nr" title="Current shares held (from Transactions file)">Shares</th>
+          <th data-col="avgBuyPrice" class="nr" title="Weighted average buy price (from Transactions file)">Avg Buy</th>
         </tr></thead>
         <tbody id="pos-tbody"></tbody>
       </table>
@@ -291,6 +294,31 @@
     <div class="analytics-charts">
       <div class="card"><h3>Open vs Closed Positions P&L</h3><div class="analytics-chart-container"><canvas id="oc-chart"></canvas></div></div>
       <div class="card"><h3>Portfolio Concentration (Top 8)</h3><div class="analytics-chart-container"><canvas id="conc-chart"></canvas></div></div>
+    </div>
+
+    <!-- TRADING ACTIVITY (from Transactions file) -->
+    <div class="card" id="trading-activity-card" style="margin-top:0;display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <h3 style="margin:0">Trading Activity & Entry Quality</h3>
+        <span style="font-size:11px;color:var(--muted)">From Transactions export</span>
+      </div>
+      <div class="analytics-charts" style="margin-bottom:16px">
+        <div class="card" style="background:var(--bg)"><h3 style="font-size:13px">Trade Count by Position</h3><div class="analytics-chart-container"><canvas id="tx-count-chart"></canvas></div></div>
+        <div class="card" style="background:var(--bg)"><h3 style="font-size:13px">Avg Buy vs Current Price per Share</h3><div class="analytics-chart-container"><canvas id="tx-entry-chart"></canvas></div></div>
+      </div>
+      <div class="tbl-wrap">
+        <table id="tx-table">
+          <thead><tr>
+            <th>Ticker</th><th>Sub-Cat</th>
+            <th class="nr">Shares</th>
+            <th class="nr">Avg Buy</th>
+            <th class="nr">Curr. Price/sh</th>
+            <th class="nr">Gain/sh</th>
+            <th class="nr"># Trades</th>
+          </tr></thead>
+          <tbody id="tx-tbody"></tbody>
+        </table>
+      </div>
     </div>
 
     <!-- CLOSED POSITIONS DETAIL -->
@@ -426,6 +454,52 @@ function filterByPeriod(timeline, period) {
     cutoff = new Date(last); cutoff.setMonth(cutoff.getMonth() - months);
   }
   return timeline.filter(t => parseDDMMYYYY(t.date) >= cutoff);
+}
+
+// ── TRANSACTIONS PROCESSING ──
+function processTransactions(sheet) {
+  const rows = XLSX.utils.sheet_to_json(sheet, {defval:null});
+  const tradeRe = /^(Buy|Sell)\s+([-\d.]+)\s+@\s+([\d.]+)\s+(\w+)$/;
+  const txByTicker = {};
+
+  rows.forEach(row => {
+    const sym = row['Instrument Symbol'];
+    if (!sym) return;
+    const ticker = String(sym).split(':')[0].toUpperCase().trim();
+    const event = String(row['Event'] || '').trim();
+    const rawDate = row['Trade Date'];
+    let dateStr = '';
+    if (rawDate instanceof Date) {
+      dateStr = `${String(rawDate.getDate()).padStart(2,'0')}-${String(rawDate.getMonth()+1).padStart(2,'0')}-${rawDate.getFullYear()}`;
+    } else if (typeof rawDate === 'number' && rawDate > 1000) {
+      // Excel serial number → JS Date (Excel epoch is Jan 1 1900; Unix epoch offset = 25569 days)
+      const jsDate = new Date(Math.round((rawDate - 25569) * 86400 * 1000));
+      dateStr = `${String(jsDate.getUTCDate()).padStart(2,'0')}-${String(jsDate.getUTCMonth()+1).padStart(2,'0')}-${jsDate.getUTCFullYear()}`;
+    } else if (rawDate) { dateStr = String(rawDate); }
+
+    const m = event.match(tradeRe);
+    if (!m) return;
+    const [, action, qtyStr, priceStr] = m;
+    const qty = parseFloat(qtyStr);   // negative for sells
+    const price = parseFloat(priceStr);
+
+    if (!txByTicker[ticker]) txByTicker[ticker] = {
+      sharesHeld: 0, totalBuyCost: 0, totalBuyShares: 0,
+      hiPrice: null, hiDate: '', loPrice: null, loDate: '', tradeCount: 0
+    };
+    const tx = txByTicker[ticker];
+    tx.sharesHeld += qty;
+    tx.tradeCount++;
+    if (action === 'Buy') { tx.totalBuyCost += qty * price; tx.totalBuyShares += qty; }
+    if (tx.hiPrice === null || price > tx.hiPrice) { tx.hiPrice = price; tx.hiDate = dateStr; }
+    if (tx.loPrice === null || price < tx.loPrice) { tx.loPrice = price; tx.loDate = dateStr; }
+  });
+
+  Object.values(txByTicker).forEach(tx => {
+    tx.avgBuyPrice = tx.totalBuyShares > 0 ? tx.totalBuyCost / tx.totalBuyShares : null;
+    tx.sharesHeld = Math.round(tx.sharesHeld * 1000) / 1000;
+  });
+  return txByTicker;
 }
 
 // ── PROCESSING ──
@@ -636,8 +710,25 @@ function mergeData(cashData, plData, perfData) {
 }
 
 // ── RENDER ──
-function renderAll(data) {
+function renderAll(data, txData) {
   DATA = data;
+  // Apply transaction data to positions
+  const tx = txData || JSON.parse(localStorage.getItem('transactionsData') || 'null');
+  if (tx) {
+    DATA.txData = tx;
+    data.positions.forEach(p => {
+      const t = tx[p.ticker];
+      if (t) {
+        p.sharesHeld = t.sharesHeld;
+        p.avgBuyPrice = t.avgBuyPrice;
+        p.hiPrice = t.hiPrice; p.hiDate = t.hiDate;
+        p.loPrice = t.loPrice; p.loDate = t.loDate;
+        p.tradeCount = t.tradeCount;
+      }
+    });
+    const badge = document.getElementById('tx-badge');
+    if (badge) badge.style.display = 'inline-block';
+  }
   const s = data.summary;
 
   // KPI strip
@@ -750,8 +841,10 @@ function renderPositions(data, search='', catF='all', subcatF='all', statusF='op
       <td class="nr ${plPos?'pos':'neg'}">${p.plPct!=null?fmtP(p.plPct):'—'}</td>
       <td class="nr">${p.dividends>0?fmtU(p.dividends):'—'}</td>
       <td class="nr">${fmtP(p.weight,1)}<span class="w-bar"><span class="w-fill" style="width:${Math.min(p.weight,100)}%"></span></span></td>
-      <td class="nr" style="color:var(--pos);font-size:11px">${fmtU(p.peakValue)}<br><span style="color:var(--muted);font-size:10px">${p.peakDate?dateShort(p.peakDate):'—'}</span></td>
-      <td class="nr" style="color:var(--neg);font-size:11px">${fmtU(p.troughValue)}<br><span style="color:var(--muted);font-size:10px">${p.troughDate?dateShort(p.troughDate):'—'}</span></td>`;
+      <td class="nr" style="font-size:12px">${p.sharesHeld!=null?fmt(p.sharesHeld,2):'—'}</td>
+      <td class="nr" style="font-size:11px">${p.avgBuyPrice!=null?'$'+fmt(p.avgBuyPrice,2):'—'}<br>${p.avgBuyPrice&&p.sharesHeld>0&&p.currentValue>0?`<span style="font-size:10px;color:${((p.currentValue/p.sharesHeld)-p.avgBuyPrice)>=0?'var(--pos)':'var(--neg)'}">${((p.currentValue/p.sharesHeld)-p.avgBuyPrice)>=0?'+':''}$${fmt((p.currentValue/p.sharesHeld)-p.avgBuyPrice,2)}/sh</span>`:''}
+      </td>
+`;
     tb.appendChild(tr);
   });
 }
@@ -914,6 +1007,7 @@ function renderAnalytics(data) {
   renderCumPLChart(data);
   renderOCChart(data, open, closed);
   renderConcChart(data, open);
+  renderTradingActivity(data);
   renderClosedPositions(data, closed, 'all');
 }
 
@@ -1022,6 +1116,87 @@ function renderConcChart(data, open) {
         y:{grid:{color:'#f3f4f6'}, ticks:{callback:v=>v+'%', font:{size:10}}, suggestedMax:20}
       }
     }
+  });
+}
+
+function renderTradingActivity(data) {
+  const card = document.getElementById('trading-activity-card');
+  if (!data.txData || !card) return;
+  card.style.display = '';
+
+  const positions = data.positions.filter(p => p.tradeCount > 0);
+  const open = positions.filter(p => p.isOpen);
+
+  // ── Trade count bar chart ──
+  const byCount = [...positions].sort((a,b) => (b.tradeCount||0) - (a.tradeCount||0)).slice(0,12);
+  destroyChart('tx-count');
+  charts['tx-count'] = new Chart(document.getElementById('tx-count-chart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: byCount.map(p => p.ticker),
+      datasets: [{ data: byCount.map(p => p.tradeCount||0),
+        backgroundColor: byCount.map(p => SC_COLORS[p.subCategory]||'#94a3b8'), borderRadius: 4 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` ${c.raw} trades` } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+        y: { grid: { color: '#f3f4f6' }, ticks: { font: { size: 10 }, stepSize: 1 } }
+      }
+    }
+  });
+
+  // ── Entry quality chart: avg buy vs current price/share ──
+  const withPrices = open.filter(p => p.avgBuyPrice != null && p.sharesHeld > 0 && p.currentValue > 0);
+  const entryItems = withPrices.sort((a,b) => {
+    const aPct = (a.currentValue/a.sharesHeld - a.avgBuyPrice)/a.avgBuyPrice;
+    const bPct = (b.currentValue/b.sharesHeld - b.avgBuyPrice)/b.avgBuyPrice;
+    return bPct - aPct;
+  });
+  destroyChart('tx-entry');
+  charts['tx-entry'] = new Chart(document.getElementById('tx-entry-chart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: entryItems.map(p => p.ticker),
+      datasets: [
+        { label: 'Avg Buy Price', data: entryItems.map(p => p.avgBuyPrice), backgroundColor: '#94a3b8', borderRadius: 4 },
+        { label: 'Current Price/sh', data: entryItems.map(p => p.currentValue/p.sharesHeld),
+          backgroundColor: entryItems.map(p => (p.currentValue/p.sharesHeld) >= p.avgBuyPrice ? '#22c55e' : '#ef4444'), borderRadius: 4 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 10 } } },
+        tooltip: { callbacks: { label: c => ` ${c.dataset.label}: $${fmt(c.raw, 2)}` } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+        y: { grid: { color: '#f3f4f6' }, ticks: { callback: v => '$'+fmt(v,0), font: { size: 9 } } }
+      }
+    }
+  });
+
+  // ── Table ──
+  const tb = document.getElementById('tx-tbody');
+  if (!tb) return;
+  tb.innerHTML = '';
+  const sorted = [...positions].sort((a,b) => (b.currentValue||0) - (a.currentValue||0));
+  sorted.forEach(p => {
+    const currPriceSh = (p.sharesHeld > 0 && p.currentValue > 0) ? p.currentValue / p.sharesHeld : null;
+    const gainSh = (currPriceSh != null && p.avgBuyPrice != null) ? currPriceSh - p.avgBuyPrice : null;
+    const gainPos = gainSh != null && gainSh >= 0;
+    const col = SC_COLORS[p.subCategory] || '#94a3b8';
+    const tr = document.createElement('tr');
+    if (!p.isOpen) tr.style.opacity = '0.55';
+    tr.innerHTML = `
+      <td><strong style="color:${col}">${p.ticker}</strong></td>
+      <td style="font-size:11px;color:var(--muted)">${p.subCategory||'—'}</td>
+      <td class="nr">${p.sharesHeld != null ? fmt(p.sharesHeld, 2) : '—'}</td>
+      <td class="nr">${p.avgBuyPrice != null ? '$'+fmt(p.avgBuyPrice,2) : '—'}</td>
+      <td class="nr">${currPriceSh != null ? '$'+fmt(currPriceSh,2) : '—'}</td>
+      <td class="nr ${gainPos?'pos':'neg'}">${gainSh!=null?(gainPos?'+':'')+('$'+fmt(gainSh,2)+'/sh'):'—'}</td>
+      <td class="nr" style="color:var(--muted)">${p.tradeCount||'—'}</td>`;
+    tb.appendChild(tr);
   });
 }
 
@@ -1228,11 +1403,28 @@ function handleFile(file) {
     const reader = new FileReader();
     reader.onload = e => {
       try {
-        const data = XLSX.read(new Uint8Array(e.target.result), {type:'array'});
-        const result = processWorkbook(data);
-        localStorage.setItem('portfolioData', JSON.stringify(result));
-        localStorage.setItem('portfolioUpdated', new Date().toISOString());
-        renderAll(result);
+        const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array'});
+        if (wb.SheetNames.includes('Cash Movements')) {
+          // AggregatedAmounts file
+          const result = processWorkbook(wb);
+          localStorage.setItem('portfolioData', JSON.stringify(result));
+          localStorage.setItem('portfolioUpdated', new Date().toISOString());
+          const txData = JSON.parse(localStorage.getItem('transactionsData') || 'null');
+          renderAll(result, txData);
+        } else if (wb.SheetNames.includes('Transactions')) {
+          // Transactions file
+          const txData = processTransactions(wb.Sheets['Transactions']);
+          localStorage.setItem('transactionsData', JSON.stringify(txData));
+          if (DATA) {
+            renderAll(DATA, txData);
+          } else {
+            loading.classList.remove('active');
+            alert('Transactions loaded ✓\n\nNow drop your AggregatedAmounts file to complete the dashboard.');
+            return;
+          }
+        } else {
+          alert('Unrecognized file.\n\nDrop either:\n• AggregatedAmounts_...xlsx (P&L & performance)\n• Transactions_...xlsx (unit prices & shares)');
+        }
       } catch(err) {
         alert('Error parsing file:\n'+err.message);
         console.error(err);
@@ -1295,7 +1487,11 @@ function fallbackCopy(text, btn) {
 (function() {
   try {
     const saved = localStorage.getItem('portfolioData');
-    if (saved) { renderAll(JSON.parse(saved)); }
+    const txSaved = localStorage.getItem('transactionsData');
+    if (saved) {
+      const txData = txSaved ? JSON.parse(txSaved) : null;
+      renderAll(JSON.parse(saved), txData);
+    }
   } catch(e) { console.warn('Could not restore:', e); }
 })();
 </script>
