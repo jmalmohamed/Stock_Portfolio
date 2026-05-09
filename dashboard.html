@@ -237,6 +237,8 @@
           <th data-col="plPct" class="nr">P&L (%)</th>
           <th data-col="dividends" class="nr">Divs (net)</th>
           <th data-col="weight" class="nr">Weight</th>
+          <th data-col="peakValue" class="nr" title="Highest position market value since tracking started">Peak Value</th>
+          <th data-col="troughValue" class="nr" title="Lowest position market value since tracking started">Trough Value</th>
         </tr></thead>
         <tbody id="pos-tbody"></tbody>
       </table>
@@ -289,6 +291,34 @@
     <div class="analytics-charts">
       <div class="card"><h3>Open vs Closed Positions P&L</h3><div class="analytics-chart-container"><canvas id="oc-chart"></canvas></div></div>
       <div class="card"><h3>Portfolio Concentration (Top 8)</h3><div class="analytics-chart-container"><canvas id="conc-chart"></canvas></div></div>
+    </div>
+
+    <!-- CLOSED POSITIONS DETAIL -->
+    <div class="card" style="margin-top:0">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+        <h3 style="margin:0">Closed Positions P&L</h3>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <select class="srch" id="closed-ticker-f" style="min-width:160px"><option value="all">All Closed Positions</option></select>
+          <div style="display:flex;gap:16px" id="closed-kpis">
+            <div><div style="font-size:11px;color:var(--muted)">Total Realized P&L</div><div id="closed-total-pl" style="font-size:18px;font-weight:700">—</div></div>
+            <div><div style="font-size:11px;color:var(--muted)">Positions Closed</div><div id="closed-count" style="font-size:18px;font-weight:700">—</div></div>
+            <div><div style="font-size:11px;color:var(--muted)">Win Rate</div><div id="closed-winrate" style="font-size:18px;font-weight:700">—</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="tbl-wrap">
+        <table id="closed-table">
+          <thead><tr>
+            <th>Ticker</th><th>Name</th>
+            <th class="nr" title="Total paid across all buys">Gross Cost</th>
+            <th class="nr" title="Total received from sells">Sell Proceeds</th>
+            <th class="nr">P&L ($)</th>
+            <th class="nr">P&L (%)</th>
+            <th class="nr">Dividends</th>
+          </tr></thead>
+          <tbody id="closed-tbody"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -541,6 +571,15 @@ function mergeData(cashData, plData, perfData) {
     const cat          = CATEGORY_MAP[pos.ticker] || {category: pos.assetType||'Other', subCategory:'Other'};
     const netDiv       = pos.dividends - pos.withholdingTax;
 
+    // Peak & trough position value using cumulative P&L timeline
+    let peakValue = currentValue, peakDate = '', troughValue = currentValue, troughDate = '';
+    const cumTL = cumPlTimeline[pos.ticker] || [];
+    cumTL.forEach(pt => {
+      const posVal = netCostBasis + pt.value;
+      if (posVal > peakValue) { peakValue = posVal; peakDate = pt.date; }
+      if (posVal < troughValue) { troughValue = posVal; troughDate = pt.date; }
+    });
+
     positions.push({
       ticker: pos.ticker, description: pos.description, assetType: pos.assetType,
       category: cat.category, subCategory: cat.subCategory,
@@ -548,7 +587,8 @@ function mergeData(cashData, plData, perfData) {
       currentValue, totalPL, plPct,
       dividends: netDiv, grossDividends: pos.dividends, withholdingTax: pos.withholdingTax,
       weight: 0,
-      isOpen: currentValue > 50
+      isOpen: currentValue > 50,
+      peakValue, peakDate, troughValue, troughDate
     });
   });
 
@@ -709,7 +749,9 @@ function renderPositions(data, search='', catF='all', subcatF='all', statusF='op
       <td class="nr ${plPos?'pos':'neg'}">${plPos?'+':''}${fmtU(p.totalPL)}</td>
       <td class="nr ${plPos?'pos':'neg'}">${p.plPct!=null?fmtP(p.plPct):'—'}</td>
       <td class="nr">${p.dividends>0?fmtU(p.dividends):'—'}</td>
-      <td class="nr">${fmtP(p.weight,1)}<span class="w-bar"><span class="w-fill" style="width:${Math.min(p.weight,100)}%"></span></span></td>`;
+      <td class="nr">${fmtP(p.weight,1)}<span class="w-bar"><span class="w-fill" style="width:${Math.min(p.weight,100)}%"></span></span></td>
+      <td class="nr" style="color:var(--pos);font-size:11px">${fmtU(p.peakValue)}<br><span style="color:var(--muted);font-size:10px">${p.peakDate?dateShort(p.peakDate):'—'}</span></td>
+      <td class="nr" style="color:var(--neg);font-size:11px">${fmtU(p.troughValue)}<br><span style="color:var(--muted);font-size:10px">${p.troughDate?dateShort(p.troughDate):'—'}</span></td>`;
     tb.appendChild(tr);
   });
 }
@@ -872,6 +914,7 @@ function renderAnalytics(data) {
   renderCumPLChart(data);
   renderOCChart(data, open, closed);
   renderConcChart(data, open);
+  renderClosedPositions(data, closed, 'all');
 }
 
 function renderGLChart(data) {
@@ -982,6 +1025,46 @@ function renderConcChart(data, open) {
   });
 }
 
+function renderClosedPositions(data, closed, tickerFilter) {
+  const rows = tickerFilter === 'all' ? closed : closed.filter(p => p.ticker === tickerFilter);
+
+  // KPIs
+  const totalPL = rows.reduce((s,p) => s+p.totalPL, 0);
+  const winners = rows.filter(p => p.totalPL > 0).length;
+  const wr = rows.length > 0 ? Math.round(winners/rows.length*100) : 0;
+  const plEl = document.getElementById('closed-total-pl');
+  if (plEl) {
+    plEl.textContent = (totalPL >= 0 ? '+' : '') + fmtU(totalPL);
+    plEl.style.color = totalPL >= 0 ? 'var(--pos)' : 'var(--neg)';
+  }
+  setText('closed-count', rows.length);
+  setText('closed-winrate', wr + '%');
+
+  // Table
+  const tb = document.getElementById('closed-tbody');
+  if (!tb) return;
+  tb.innerHTML = '';
+  if (!rows.length) {
+    tb.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:20px">No closed positions found.</td></tr>';
+    return;
+  }
+  const sorted = [...rows].sort((a,b) => b.totalPL - a.totalPL);
+  sorted.forEach(p => {
+    const plPos = p.totalPL >= 0;
+    const plPctStr = p.grossCost > 0 ? fmtP((p.totalPL / p.grossCost) * 100) : '—';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><strong style="color:${SC_COLORS[p.subCategory]||'#6b7280'}">${p.ticker}</strong></td>
+      <td style="font-size:11px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.description}">${p.description}</td>
+      <td class="nr" style="color:var(--muted)">${fmtU(p.grossCost)}</td>
+      <td class="nr">${fmtU(p.sellProceeds)}</td>
+      <td class="nr ${plPos?'pos':'neg'}">${plPos?'+':''}${fmtU(p.totalPL)}</td>
+      <td class="nr ${plPos?'pos':'neg'}">${plPctStr}</td>
+      <td class="nr">${p.dividends > 0 ? fmtU(p.dividends) : '—'}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
 // Trades
 function renderTrades(data, search='', typeF='all') {
   let trades = data.trades;
@@ -1007,9 +1090,11 @@ function renderTrades(data, search='', typeF='all') {
 function populateFilters(data) {
   const subcats = [...new Set(data.positions.map(p=>p.subCategory).filter(Boolean))].sort();
   const tickers = [...new Set(data.positions.filter(p=>p.isOpen).map(p=>p.ticker))].sort();
+  const closedTickers = [...new Set(data.positions.filter(p=>!p.isOpen).map(p=>p.ticker))].sort();
   fillSelect('subcat-f', subcats, 'all', 'All Sub-Categories');
   fillSelect('perf-ticker', tickers, 'all', 'All Positions');
   fillSelect('perf-subcat', subcats, 'all', 'All Sub-Categories');
+  fillSelect('closed-ticker-f', closedTickers, 'all', 'All Closed Positions');
 }
 
 function fillSelect(id, opts, allVal, allLabel) {
@@ -1057,6 +1142,14 @@ document.addEventListener('click', e => {
     mb.classList.add('active');
     perfMode = mb.dataset.m;
     renderPerformanceChart();
+  }
+});
+
+// Closed positions filter
+document.addEventListener('change', e => {
+  if (e.target.id === 'closed-ticker-f' && DATA) {
+    const closed = DATA.positions.filter(p => !p.isOpen);
+    renderClosedPositions(DATA, closed, e.target.value);
   }
 });
 
