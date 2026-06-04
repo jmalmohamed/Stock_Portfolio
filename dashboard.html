@@ -352,11 +352,26 @@
 
   <!-- TRADES -->
   <div class="tab-panel" id="tab-trades">
+    <!-- Reconciliation Panel -->
+    <div class="card" style="margin-bottom:18px" id="recon-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+        <h3 style="margin:0">Portfolio Reconciliation</h3>
+        <span style="font-size:11px;color:var(--muted)">How all the numbers connect</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border-radius:10px;overflow:hidden" id="recon-grid">
+        <!-- filled by renderRecon() -->
+      </div>
+      <div style="margin-top:14px;padding:12px 16px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0;font-size:12px;color:#166534" id="recon-eq">
+        <!-- equation check filled by renderRecon() -->
+      </div>
+    </div>
+
     <!-- Cash Flow Chart -->
     <div class="card" style="margin-bottom:18px">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px">
         <h3 style="margin:0">Cash Flow by Month</h3>
         <div style="display:flex;gap:6px;flex-wrap:wrap" id="tr-type-toggles">
+          <button class="tr-tog" data-type="DEP"  style="padding:5px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:2px solid #2563eb;background:#eff6ff;color:#1d4ed8;transition:opacity .15s">DEP</button>
           <button class="tr-tog" data-type="BUY"  style="padding:5px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:2px solid #ef4444;background:#fef2f2;color:#dc2626;transition:opacity .15s">BUY</button>
           <button class="tr-tog" data-type="SELL" style="padding:5px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:2px solid #22c55e;background:#f0fdf4;color:#16a34a;transition:opacity .15s">SELL</button>
           <button class="tr-tog" data-type="DIV"  style="padding:5px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:2px solid #f59e0b;background:#fffbeb;color:#b45309;transition:opacity .15s">DIV</button>
@@ -365,11 +380,20 @@
         </div>
       </div>
       <div id="tr-kpis" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px"></div>
-      <div style="position:relative;height:280px"><canvas id="trades-chart"></canvas></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+        <div>
+          <div style="font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Monthly</div>
+          <div style="position:relative;height:280px"><canvas id="trades-chart"></canvas></div>
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Cumulative</div>
+          <div style="position:relative;height:280px"><canvas id="trades-cumul-chart"></canvas></div>
+        </div>
+      </div>
     </div>
     <div class="toolbar">
       <input type="text" class="srch" id="tr-srch" placeholder="Search ticker…" style="width:180px">
-      <select class="srch" id="tr-type"><option value="all">All Types</option><option value="BUY">Buys</option><option value="SELL">Sells</option><option value="DIV">Dividends</option><option value="WHT">Withholding Tax</option><option value="FEE">Fees</option></select>
+      <select class="srch" id="tr-type"><option value="all">All Types</option><option value="DEP">Bank Deposits</option><option value="BUY">Buys</option><option value="SELL">Sells</option><option value="DIV">Dividends</option><option value="WHT">Withholding Tax</option><option value="FEE">Fees</option></select>
       <span style="font-size:12px;color:var(--muted);margin-left:auto" id="tr-count"></span>
     </div>
     <div class="tbl-wrap">
@@ -439,7 +463,7 @@ let DATA = null;
 let charts = {};
 let perfPeriod = 'ALL', perfMode = 'value';
 let sortCol = 'currentValue', sortDir = -1;
-let tradeChartTypes = new Set(['BUY','SELL','DIV','FEE','WHT']);
+let tradeChartTypes = new Set(['DEP','BUY','SELL','DIV','FEE','WHT']);
 
 // ── UTILS ──
 const fmt  = (n,d=0) => n==null?'—':new Intl.NumberFormat('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}).format(n);
@@ -558,6 +582,7 @@ function processCashMovements(sheet) {
       if (amtType === 'Cash Amount' && amount > 0) {
         totalDeposited += amount;
         depositTimeline.push({date, amount});
+        trades.push({date, ticker:'—', description:'Bank Transfer / Deposit', type:'DEP', amount, commission:0});
       }
       return;
     }
@@ -713,6 +738,7 @@ function mergeData(cashData, plData, perfData) {
 
   return {
     positions, trades,
+    depositTimeline,
     performance: perfData,
     plTimeline,
     cumPlTimeline, dailyByTicker,
@@ -772,6 +798,7 @@ function renderAll(data, txData) {
   renderAnalytics(data);
   renderTrades(data);
   renderTradesChart(data);
+  renderRecon(data);
   populateFilters(data);
 
   document.getElementById('upload-screen').style.display = 'none';
@@ -1258,6 +1285,84 @@ function renderClosedPositions(data, closed, tickerFilter) {
   });
 }
 
+// Reconciliation panel
+function renderRecon(data) {
+  const s = data.summary;
+  const grid = document.getElementById('recon-grid');
+  const eq   = document.getElementById('recon-eq');
+  if (!grid || !eq) return;
+
+  // Compute totals from trades
+  const tot = {DEP:0, BUY:0, SELL:0, DIV:0, FEE:0, WHT:0};
+  data.trades.forEach(t => {
+    if (t.type==='DEP')       tot.DEP  += t.amount;
+    else if (t.type==='BUY')  tot.BUY  += t.amount + (t.commission||0);
+    else if (t.type==='SELL') tot.SELL += t.amount;
+    else if (t.type==='DIV')  tot.DIV  += t.amount;
+    else if (t.type==='FEE')  tot.FEE  += t.amount;
+    else if (t.type==='WHT')  tot.WHT  += t.amount;
+  });
+  const netDeployed = tot.BUY - tot.SELL - tot.DIV + tot.FEE + tot.WHT;
+  const cashBalance = s.cashBalance;
+  const secValue    = s.investedValue;
+  const totalValue  = s.totalPortfolioValue;
+  const pl          = s.totalPL;
+  const plPct       = s.totalPLPct;
+
+  const col = (cls, txt) => `<div style="background:white;padding:14px 16px">
+    <div style="font-size:9px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#94a3b8;margin-bottom:8px">${cls}</div>
+    ${txt}
+  </div>`;
+
+  const row = (lbl, val, color='#111', size='13px', bold=false) =>
+    `<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;font-size:${size}">
+      <span style="color:#64748b;font-size:11px">${lbl}</span>
+      <span style="font-weight:${bold?800:600};color:${color}">${val}</span>
+    </div>`;
+
+  const divider = `<div style="border-top:1px solid #f1f5f9;margin:8px 0"></div>`;
+
+  grid.innerHTML =
+    col('① From your bank',
+      row('Bank deposits', '+'+fmtU(tot.DEP), '#2563eb', '13px', true) +
+      row('Cash balance today', fmtU(cashBalance), '#475569') +
+      divider +
+      row('Net deployed', fmtU(netDeployed), '#dc2626', '12px', true)
+    ) +
+    col('② Trading activity',
+      row('Gross buys', '−'+fmtU(tot.BUY), '#dc2626') +
+      row('Sell proceeds', '+'+fmtU(tot.SELL), '#16a34a') +
+      row('Dividends (gross)', '+'+fmtU(tot.DIV), '#16a34a') +
+      row('Withholding Tax', '−'+fmtU(tot.WHT), '#dc2626') +
+      row('Custody fees', '−'+fmtU(tot.FEE), '#dc2626') +
+      divider +
+      row('Net deployed', fmtU(netDeployed), '#dc2626', '12px', true)
+    ) +
+    col('③ Market value today',
+      row('Securities (mkt)', fmtU(secValue), '#16a34a', '13px', true) +
+      row('Cash', fmtU(cashBalance), '#475569') +
+      divider +
+      row('Total account', fmtU(totalValue), '#111', '13px', true)
+    ) +
+    col('④ Your result',
+      row('You put in', fmtU(tot.DEP), '#475569') +
+      row('Account worth', fmtU(totalValue), '#111') +
+      divider +
+      `<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:4px">
+        <span style="color:#64748b;font-size:11px">P&amp;L</span>
+        <span style="font-size:16px;font-weight:800;color:${pl>=0?'#16a34a':'#dc2626'}">${pl>=0?'+':''}${fmtU(pl)}</span>
+      </div>` +
+      `<div style="text-align:right;font-size:11px;color:${plPct>=0?'#16a34a':'#dc2626'};font-weight:700">${fmtP(plPct)} total return</div>`
+    );
+
+  eq.innerHTML = `<strong>✓ The equation:</strong> &nbsp;
+    Bank Deposits <span style="color:#475569">(${fmtU(tot.DEP)})</span> &nbsp;=&nbsp;
+    Cash Balance <span style="color:#475569">(${fmtU(cashBalance)})</span> &nbsp;+&nbsp;
+    Net Deployed <span style="color:#dc2626">(${fmtU(netDeployed)})</span>
+    &nbsp;&nbsp;|&nbsp;&nbsp;
+    <strong>P&amp;L = Account Value − Deposits = ${pl>=0?'+':''}${fmtU(pl)}</strong>`;
+}
+
 // Trades cash flow chart
 function renderTradesChart(data) {
   if (!data) return;
@@ -1271,8 +1376,8 @@ function renderTradesChart(data) {
     if (isNaN(d.getTime())) return;
     const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
     const lbl = d.toLocaleDateString('en-AU', {month:'short', year:'2-digit'});
-    if (!monthMap[key]) monthMap[key] = {lbl, BUY:0, SELL:0, DIV:0, FEE:0, WHT:0};
-    if (t.type === 'SELL' || t.type === 'DIV') {
+    if (!monthMap[key]) monthMap[key] = {lbl, DEP:0, BUY:0, SELL:0, DIV:0, FEE:0, WHT:0};
+    if (t.type === 'DEP' || t.type === 'SELL' || t.type === 'DIV') {
       monthMap[key][t.type] += t.amount;
     } else {
       monthMap[key][t.type] -= t.amount;
@@ -1284,16 +1389,17 @@ function renderTradesChart(data) {
   const labels  = sorted.map(([,v]) => v.lbl);
 
   const TYPE_CFG = {
-    SELL: {label:'Sell (inflow)',      color:'#22c55e'},
+    DEP:  {label:'Bank Deposit',       color:'#2563eb'},
+    SELL: {label:'Sell proceeds',      color:'#22c55e'},
     DIV:  {label:'Dividends (gross)',  color:'#f59e0b'},
-    BUY:  {label:'Buy (outflow)',      color:'#ef4444'},
-    FEE:  {label:'Fees',               color:'#94a3b8'},
+    BUY:  {label:'Gross buy volume',   color:'#ef4444'},
+    FEE:  {label:'Custody fees',       color:'#94a3b8'},
     WHT:  {label:'Withholding Tax',    color:'#f97316'},
   };
 
   // Incomes first so they stack above 0, expenses below
   const datasets = [];
-  ['SELL','DIV','BUY','FEE','WHT'].filter(t => tradeChartTypes.has(t)).forEach(type => {
+  ['DEP','SELL','DIV','BUY','FEE','WHT'].filter(t => tradeChartTypes.has(t)).forEach(type => {
     const cfg = TYPE_CFG[type];
     datasets.push({
       type: 'bar', label: cfg.label,
@@ -1303,40 +1409,42 @@ function renderTradesChart(data) {
     });
   });
 
-  // Net cash flow line
+  // Net cash deployed line (only trading activity, not deposits)
   datasets.push({
-    type: 'line', label: 'Net Cash Flow',
+    type: 'line', label: 'Net Cash Deployed',
     data: sorted.map(([,v]) =>
       +((tradeChartTypes.has('SELL')?(v.SELL||0):0)
       + (tradeChartTypes.has('DIV') ?(v.DIV ||0):0)
       + (tradeChartTypes.has('BUY') ?(v.BUY ||0):0)
       + (tradeChartTypes.has('FEE') ?(v.FEE ||0):0)
       + (tradeChartTypes.has('WHT') ?(v.WHT ||0):0)).toFixed(2)),
-    borderColor:'#2563eb', backgroundColor:'transparent',
+    borderColor:'#7c3aed', backgroundColor:'transparent',
     borderWidth:2, pointRadius:3, pointHoverRadius:5,
     tension:0.3, stack:undefined, order:-1,
   });
 
   // Totals for KPI strip (always over all trades, not just filtered months)
-  const totals = {BUY:0, SELL:0, DIV:0, FEE:0, WHT:0};
+  const totals = {DEP:0, BUY:0, SELL:0, DIV:0, FEE:0, WHT:0};
   data.trades.forEach(t => {
-    if (t.type==='BUY')       totals.BUY  += t.amount + (t.commission||0);
+    if (t.type==='DEP')       totals.DEP  += t.amount;
+    else if (t.type==='BUY')  totals.BUY  += t.amount + (t.commission||0);
     else if (t.type==='SELL') totals.SELL += t.amount;
     else if (t.type==='DIV')  totals.DIV  += t.amount;
     else if (t.type==='FEE')  totals.FEE  += t.amount;
     else if (t.type==='WHT')  totals.WHT  += t.amount;
   });
-  const net = totals.SELL + totals.DIV - totals.BUY - totals.FEE - totals.WHT;
+  const netDeployed = totals.BUY - totals.SELL - totals.DIV + totals.FEE + totals.WHT;
 
   const kpiEl = document.getElementById('tr-kpis');
   if (kpiEl) {
     const kpiDefs = [
-      {type:'BUY',  label:'Total Invested',     val:'−'+fmtU(totals.BUY),  cls:'kpi-neg'},
+      {type:'DEP',  label:'Bank Deposits',       val:'+'+fmtU(totals.DEP),  cls:'kpi-pos'},
+      {type:'BUY',  label:'Gross Buy Volume',    val:'−'+fmtU(totals.BUY),  cls:'kpi-neg'},
       {type:'SELL', label:'Sell Proceeds',       val:'+'+fmtU(totals.SELL), cls:'kpi-pos'},
       {type:'DIV',  label:'Dividends (gross)',   val:'+'+fmtU(totals.DIV),  cls:'kpi-pos'},
       {type:'WHT',  label:'Withholding Tax',     val:'−'+fmtU(totals.WHT),  cls:'kpi-neg'},
       {type:'FEE',  label:'Custody Fees',        val:'−'+fmtU(totals.FEE),  cls:'kpi-neg'},
-      {type:null,   label:'Net Cash Flow',       val:(net>=0?'+':'')+fmtU(net), cls:net>=0?'kpi-pos':'kpi-neg'},
+      {type:null,   label:'Net Cash Deployed',   val:fmtU(netDeployed), cls:'kpi-neg'},
     ].filter(k => k.type===null || tradeChartTypes.has(k.type));
     kpiEl.innerHTML = kpiDefs.map(k =>
       `<div class="kpi" style="min-width:120px;flex:1"><div class="kpi-lbl">${k.label}</div><div class="kpi-val ${k.cls}">${k.val}</div></div>`
@@ -1363,6 +1471,63 @@ function renderTradesChart(data) {
       }
     }
   });
+
+  // ── CUMULATIVE CHART ──
+  const CUMUL_CFG = {
+    DEP:  {label:'Bank Deposits',     color:'#2563eb'},
+    SELL: {label:'Sell proceeds',     color:'#22c55e'},
+    DIV:  {label:'Dividends (gross)', color:'#f59e0b'},
+    BUY:  {label:'Gross buy volume',  color:'#ef4444'},
+    FEE:  {label:'Custody fees',      color:'#94a3b8'},
+    WHT:  {label:'Withholding Tax',   color:'#f97316'},
+  };
+  const cumulDatasets = [];
+  ['DEP','SELL','DIV','BUY','FEE','WHT'].filter(t => tradeChartTypes.has(t)).forEach(type => {
+    const cfg = CUMUL_CFG[type];
+    let c = 0;
+    cumulDatasets.push({
+      label: cfg.label,
+      data: sorted.map(([,v]) => { c += (v[type]||0); return +c.toFixed(2); }),
+      borderColor: cfg.color, backgroundColor: 'transparent',
+      borderWidth: 2, pointRadius: 2, pointHoverRadius: 4, tension: 0.3,
+    });
+  });
+  // Net Cash Deployed cumulative (dashed purple)
+  let cn = 0;
+  cumulDatasets.push({
+    label: 'Net Cash Deployed',
+    data: sorted.map(([,v]) => {
+      cn += (tradeChartTypes.has('SELL')?(v.SELL||0):0)
+          + (tradeChartTypes.has('DIV') ?(v.DIV ||0):0)
+          + (tradeChartTypes.has('BUY') ?(v.BUY ||0):0)
+          + (tradeChartTypes.has('FEE') ?(v.FEE ||0):0)
+          + (tradeChartTypes.has('WHT') ?(v.WHT ||0):0);
+      return +cn.toFixed(2);
+    }),
+    borderColor:'#7c3aed', backgroundColor:'transparent',
+    borderWidth:2.5, borderDash:[5,3], pointRadius:2, pointHoverRadius:4, tension:0.3,
+  });
+
+  destroyChart('trades-cumul');
+  const ctx2 = document.getElementById('trades-cumul-chart');
+  if (ctx2) {
+    charts['trades-cumul'] = new Chart(ctx2.getContext('2d'), {
+      type:'line',
+      data:{ labels, datasets: cumulDatasets },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        interaction:{mode:'index', intersect:false},
+        plugins:{
+          legend:{position:'bottom', labels:{font:{size:11}, padding:10, boxWidth:12}},
+          tooltip:{callbacks:{label: c => ` ${c.dataset.label}: ${c.raw>=0?'+':''}${fmtU(c.raw,2)}`}}
+        },
+        scales:{
+          x:{grid:{display:false}, ticks:{font:{size:10}}},
+          y:{grid:{color:'#f3f4f6'}, ticks:{callback: v => (v>=0?'+$':'-$')+fmt(Math.abs(v)), font:{size:10}}}
+        }
+      }
+    });
+  }
 }
 
 // Trades
@@ -1375,14 +1540,15 @@ function renderTrades(data, search='', typeF='all') {
   setText('tr-count', trades.length+' records');
   if (!trades.length) { tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">No records found.</td></tr>'; return; }
   trades.slice(0,300).forEach(t => {
-    const badge = t.type==='BUY' ?'<span class="badge b-buy">BUY</span>':
+    const badge = t.type==='DEP' ?'<span class="badge" style="background:#eff6ff;color:#1d4ed8">DEP</span>':
+      t.type==='BUY' ?'<span class="badge b-buy">BUY</span>':
       t.type==='SELL'?'<span class="badge b-sell">SELL</span>':
       t.type==='DIV' ?'<span class="badge" style="background:#fef3c7;color:#92400e">DIV</span>':
       t.type==='WHT' ?'<span class="badge" style="background:#fff7ed;color:#c2410c">WHT</span>':
       '<span class="badge b-fee">FEE</span>';
-    // Income types (green +): SELL, DIV
+    // Income types (green +): DEP, SELL, DIV
     // Expense types (red −): BUY, FEE, WHT
-    const isIncome = t.type === 'SELL' || t.type === 'DIV';
+    const isIncome = t.type === 'DEP' || t.type === 'SELL' || t.type === 'DIV';
     const amtSign  = isIncome ? '+' : '−';
     const amtColor = isIncome ? 'var(--pos)' : 'var(--neg)';
     const commStr  = t.commission ? `<span style="color:var(--neg)">−${fmtU(t.commission,2)}</span>` : '—';
